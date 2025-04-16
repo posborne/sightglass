@@ -12,7 +12,7 @@ env:
   CARGO_TERM_COLOR: always
   RUST_LOG: info
   PARTITIONS: 8
-  ITERATIONS: 4  # TODO: Increase once stable
+  ITERATIONS: 16  # TODO: Increase once stable
 
 jobs:
   build-wasmtime:
@@ -64,6 +64,7 @@ jobs:
         --processes=1 \
         --iterations-per-process=${ITERATIONS} \
         --benchmark-phase=execution \
+        --measure=perf-counters \
         --raw \
         -f json \
         -o benchmark-results.json \
@@ -90,6 +91,7 @@ jobs:
         run: |
           benchmarks/sightglass-to-continuous.py \
             -o continuous-custom.json \
+            -m perf-counters \
             artifacts/benchmark-*/benchmark-results.json \
 
       - name: Output Results

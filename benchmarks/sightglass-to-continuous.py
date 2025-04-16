@@ -66,7 +66,7 @@ def wasm_path_to_benchmark_name(wasm_path: str) -> str:
         return splits[-1].replace(".wasm", "")
 
 
-def transform(sightglass_data: [dict]) -> [dict]:
+def transform(sightglass_data: [dict], measure: str) -> [dict]:
     series_map = {}
     for sample in sightglass_data:
         phase = sample["phase"]
@@ -84,26 +84,26 @@ def transform(sightglass_data: [dict]) -> [dict]:
 
     output = []
     for series_name, samples in series_map.items():
-        cycle_samples = [s.count for s in samples if s.event == "cycles"]
+        matching_samples = [s.count for s in samples if s.event == measure]
 
         # yes, this could be done more efficiently
-        count_cycles = len(cycle_samples)
-        min_cycles = min(cycle_samples)
-        max_cycles = max(cycle_samples)
-        sum_cycles = sum(cycle_samples)
-        avg_cycles = sum_cycles / count_cycles
+        count = len(matching_samples)
+        min_ = min(matching_samples)
+        max_ = max(matching_samples)
+        sum_ = sum(matching_samples)
+        avg = sum_ / count
 
         # there might be a better stastical measure here as this doesn't
         # factor in confidence levels or anything, but is intended to give
         # a picture of whether there are any significant outlier samples.
-        max_variance_from_mean = max(max_cycles - avg_cycles, avg_cycles - min_cycles)
-        max_variance_as_pct = (max_variance_from_mean / avg_cycles) * 100
+        max_variance_from_mean = max(max_ - avg, avg - min_)
+        max_variance_as_pct = (max_variance_from_mean / avg) * 100
 
         output.append({
             "name": series_name,
-            "unit": "cycles",
-            "value": avg_cycles,
-            "extra": f"Max: {max_cycles}, Min: {min_cycles}, ±{max_variance_as_pct:.2f}%"
+            "unit": measure,
+            "value": avg,
+            "extra": f"Max: {max_}, Min: {min_}, ±{max_variance_as_pct:.2f}%"
         })
 
     return output
@@ -113,6 +113,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--out", "-o", default="out.json",
                         type=pathlib.Path, help="Custom JSON output path")
+    parser.add_argument("--measure", "-m", default="cycles",
+                        help="The measure to map as the value for the output stream (cycles, perf-counter, etc.)")
     parser.add_argument("json_in", nargs="+",
                         type=pathlib.Path, help="Sightglass JSON input file(s)")
     args = parser.parse_args()
@@ -121,7 +123,7 @@ def main():
         with open(path) as json_f:
             input_samples.extend(json.load(json_f))
 
-    transformed = transform(input_samples)
+    transformed = transform(input_samples, args.measure)
     with open(args.out, "w") as json_out:
         json.dump(transformed, json_out)
 

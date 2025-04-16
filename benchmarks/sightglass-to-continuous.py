@@ -111,13 +111,18 @@ def transform(sightglass_data: [dict]) -> [dict]:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("json_in", type=pathlib.Path, help="Sightglass JSON input path")
-    parser.add_argument("json_out", type=pathlib.Path, help="Custom JSON output path")
+    parser.add_argument("--out", "-o", default="out.json",
+                        type=pathlib.Path, help="Custom JSON output path")
+    parser.add_argument("json_in", nargs="+",
+                        type=pathlib.Path, help="Sightglass JSON input file(s)")
     args = parser.parse_args()
-    with open(args.json_in) as json_in:
-        input_data = json.load(json_in)
-    transformed = transform(input_data)
-    with open(args.json_out, "w") as json_out:
+    input_samples = []
+    for path in args.json_in:
+        with open(path) as json_f:
+            input_samples.extend(json.load(json_f))
+
+    transformed = transform(input_samples)
+    with open(args.out, "w") as json_out:
         json.dump(transformed, json_out)
 
 if __name__ == '__main__':

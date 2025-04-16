@@ -61,8 +61,8 @@ jobs:
       run: |-
         cargo run benchmark \
         --engine=artifacts/wasmtime-main/libengine.so \
-        --processes=4 \
-        "--iterations-per-process=${ITERATIONS}" \
+        --processes=1 \
+        --iterations-per-process=${ITERATIONS} \
         --benchmark-phase=execution \
         --raw \
         -f json \

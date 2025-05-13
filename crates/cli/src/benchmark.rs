@@ -57,6 +57,14 @@ pub struct BenchmarkCommand {
     #[structopt(long = "processes", default_value = "10", value_name = "PROCESSES")]
     processes: usize,
 
+    /// Override the "engine" name; this is useful if running experiments that might
+    /// not have a differentiating engine name (e.g. if customizing the flags).
+    ///
+    /// If multiple engines are provided, the order of names provided here should
+    /// match the order of the engines specified.
+    #[structopt(long = "name", short = "n")]
+    names: Option<Vec<String>>,
+
     /// How many times should we run a benchmark in a single process?
     #[structopt(
         long = "iterations-per-process",
@@ -166,8 +174,13 @@ impl BenchmarkCommand {
             .collect();
         let mut all_measurements = vec![];
 
-        for engine in &self.engines {
+        for (i, engine) in self.engines.iter().enumerate() {
             let engine_path = check_engine_path(engine)?;
+            let engine_name = self
+                .names
+                .as_ref()
+                .and_then(|names| names.get(i).map(|s| s.as_str()))
+                .unwrap_or(engine);
             log::info!("Using benchmark engine: {}", engine_path.display());
             let lib = unsafe { libloading::Library::new(&engine_path)? };
             let mut bench_api = unsafe { BenchApi::new(&lib)? };
@@ -196,7 +209,7 @@ impl BenchmarkCommand {
                 let stderr = Path::new(&stderr);
                 let stdin = None;
 
-                let mut measurements = Measurements::new(this_arch(), engine, wasm_file);
+                let mut measurements = Measurements::new(this_arch(), engine_name, wasm_file);
                 let mut measure = if self.measures.len() <= 1 {
                     let measure = self.measures.first().unwrap_or(&MeasureType::Cycles);
                     measure.build()

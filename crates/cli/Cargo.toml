@@ -22,9 +22,7 @@ thiserror = "1.0"
 rand = { version = "0.7.3", features = ["small_rng"] }
 csv = "1.1.6"
 regex = "1.5.4"
-polars = { version = "0.46", features = ["lazy", "strings", "json"] }
-plotlars = "0.9"
-vega_lite_4 = { git = "https://github.com/procyon-rs/vega_lite_4.rs", features = ["polars"] }
+vega_lite_4 = { git = "https://github.com/procyon-rs/vega_lite_4.rs" }
 minijinja = "2.10"
 
 [dev-dependencies]

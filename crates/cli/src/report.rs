@@ -230,19 +230,30 @@ fn parse_input(
         .unwrap_or(Format::Json);
 
     let prefix = prefix_from_path(path.as_ref());
-    let file = File::open(path)?;
+    let file = File::open(&path)?;
 
     let measurements: Vec<Measurement> = match format {
         Format::Json => {
-            let mut measurements = Vec::new();
             let reader = BufReader::new(file);
-            for line in BufRead::lines(reader) {
-                let line = line?;
-                if let Ok(measurement) = serde_json::from_str::<Measurement>(&line) {
-                    measurements.push(measurement);
+
+            // First try to parse as a JSON array
+            if let Ok(measurements) = serde_json::from_reader::<_, Vec<Measurement>>(reader) {
+                measurements
+            } else {
+                // Fall back to JSONL format (one JSON object per line)
+                // Need to reopen the file since the reader was consumed
+                let file_retry = File::open(path.as_ref())?;
+                let reader_retry = BufReader::new(file_retry);
+                let mut measurements = Vec::new();
+                for line in BufRead::lines(reader_retry) {
+                    let line = line?;
+                    eprintln!("line = {:?}", line);
+                    if let Ok(measurement) = serde_json::from_str::<Measurement>(&line) {
+                        measurements.push(measurement);
+                    }
                 }
+                measurements
             }
-            measurements
         }
         Format::Csv { .. } => {
             let mut reader = csv::Reader::from_reader(file);
@@ -314,12 +325,12 @@ impl ReportCommand {
                         .axis(AxisBuilder::default().title("cycles").build()?)
                         .build()?)
                     .y(YClassBuilder::default()
-                        .field("engine")
+                        .field("prefix")
                         .position_def_type(vl::Type::Nominal)
                         .build()?)
                     .color(
                         ColorClassBuilder::default()
-                            .field("engine")
+                            .field("prefix")
                             .legend(LegendBuilder::default().title("Engine").build()?)
                             .build()?,
                     )
@@ -362,17 +373,29 @@ impl ReportCommand {
         Ok(chart.to_string()?)
     }
 
-    fn baseline_prefix(&self) -> &str {
-        self.baseline_engine.as_deref().unwrap_or("baseline")
+    fn baseline_prefix(&self, measurements: &[Measurement]) -> String {
+        if let Some(baseline) = &self.baseline_engine {
+            baseline.clone()
+        } else {
+            // Use the first engine found in measurements as the baseline
+            measurements
+                .iter()
+                .map(|m| extract_prefix_from_engine(&m.engine))
+                .next()
+                .unwrap_or_else(|| "baseline".to_string())
+        }
     }
 
     fn compute_stats(&self, measurements: &[Measurement]) -> anyhow::Result<SightglassStats> {
+        eprintln!("compute_stats! measurements={measurements:?}");
+
         // First calculate effect sizes for all measurements
         let effect_sizes = effect_size::calculate(self.significance_level, measurements)?;
         // Group measurements by benchmark name
         let mut benchmark_groups: HashMap<String, Vec<&Measurement>> = HashMap::new();
 
         for measurement in measurements {
+            eprintln!("measurent: {measurement:?}");
             let benchmark = extract_benchmark_name(&measurement.wasm);
             benchmark_groups
                 .entry(benchmark)
@@ -380,7 +403,7 @@ impl ReportCommand {
                 .push(measurement);
         }
 
-        let baseline_prefix = self.baseline_prefix();
+        let baseline_prefix = self.baseline_prefix(measurements);
         let mut benchmarks_data: Vec<BenchmarkData> = Vec::new();
 
         for (benchmark_name, benchmark_measurements) in benchmark_groups {
@@ -397,17 +420,18 @@ impl ReportCommand {
 
             // Calculate stats for each prefix
             let mut stats_by_prefix = HashMap::new();
-            let baseline_counts = prefix_groups.get(baseline_prefix);
+            let baseline_counts = prefix_groups.get(&baseline_prefix);
             let significance_level = self.significance_level;
 
             for (prefix, counts) in &prefix_groups {
-                let effect_size_data = if prefix != baseline_prefix {
-                    find_effect_size(&effect_sizes, &benchmark_name, prefix, baseline_prefix)
+                eprintln!("prefix={prefix}, counts.len()={}", counts.len());
+                let effect_size_data = if prefix != &baseline_prefix {
+                    find_effect_size(&effect_sizes, &benchmark_name, prefix, &baseline_prefix)
                 } else {
                     None
                 };
 
-                let stats = if prefix == baseline_prefix {
+                let stats = if prefix == &baseline_prefix {
                     calculate_stats_for_counts(counts, None, significance_level, None)
                 } else {
                     calculate_stats_for_counts(
@@ -421,7 +445,7 @@ impl ReportCommand {
             }
 
             let baseline_stats = stats_by_prefix
-                .get(baseline_prefix)
+                .get(&baseline_prefix)
                 .ok_or_else(|| {
                     anyhow::anyhow!(
                         "Unable to find baseline stats for benchmark: {}",
@@ -466,8 +490,10 @@ impl ReportCommand {
     pub fn execute(&self) -> anyhow::Result<()> {
         let mut all_measurements = Vec::new();
 
+        eprintln!("input_files: {:?}", self.input_files);
         for input_file in &self.input_files {
             let measurements = parse_input(self.input_format.clone(), input_file)?;
+            eprintln!("measurements for {input_file:?} = {:?}", measurements);
             all_measurements.extend(measurements);
         }
 

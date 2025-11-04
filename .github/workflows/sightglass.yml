@@ -16,15 +16,16 @@ env:
   WASMTIME_COMMIT: "a2e71dafac4d2e42ed6edbc77081d39a40f4c3ff"
 
 jobs:
-  format:
+  format-and-clippy:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v4
       with:
         submodules: true
     - run: rustup update
-    - run: rustup component add rustfmt
+    - run: rustup component add rustfmt clippy
     - run: cargo fmt --all -- --check
+    - run: cargo clippy --all-targets --all-features -- -D warnings
 
   test:
     runs-on: ${{ matrix.os }}

@@ -8,16 +8,15 @@ use std::{
 };
 
 use serde::Serialize;
-use sightglass_analysis::{effect_size, report_stats::BenchmarkStats};
-use sightglass_data::{EffectSize, Format, Measurement, Phase};
+use sightglass_analysis::report_stats::{calculate_benchmark_stats, BenchmarkStats, ReportConfig};
+use sightglass_data::{Format, Measurement, Phase};
 use structopt::StructOpt;
 use vega_lite_4::{
     AxisBuilder, ColorClassBuilder, EdEncodingBuilder, LegendBuilder, Mark, NormalizedSpecBuilder,
     XClassBuilder, YClassBuilder,
 };
 
-const TEMPLATE: &str =
-    include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/report.jinja"));
+const TEMPLATE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/report.jinja"));
 
 /// Generate an HTML report for a given set of raw inputs
 #[derive(Debug, StructOpt)]
@@ -40,6 +39,14 @@ pub struct ReportCommand {
     /// Significance level for statistical tests (default: 0.05 for 95% confidence)
     #[structopt(long = "significance-level", default_value = "0.05")]
     significance_level: f64,
+
+    /// Primary event to analyze (default: cycles)
+    #[structopt(long = "event", default_value = "cycles")]
+    primary_event: String,
+
+    /// Target phase to analyze (default: execution)
+    #[structopt(long = "phase", default_value = "execution")]
+    target_phase: Phase,
 
     /// Path to the file(s) that will be read from, or none to indicate stdin (default).
     #[structopt(min_values = 1)]
@@ -80,137 +87,45 @@ fn extract_prefix_from_engine(engine: &str) -> String {
 }
 
 fn extract_benchmark_name(wasm_path: &str) -> String {
-    wasm_path
-        .strip_prefix("benchmarks/")
-        .unwrap_or(wasm_path)
-        .strip_suffix("/benchmark.wasm")
-        .unwrap_or(wasm_path)
-        .strip_suffix(".wasm")
-        .unwrap_or(wasm_path)
-        .to_string()
-}
+    let mut path = wasm_path;
 
-fn find_effect_size<'a>(
-    effect_sizes: &'a [EffectSize<'a>],
-    benchmark: &str,
-    engine_a: &str,
-    engine_b: &str,
-) -> Option<&'a EffectSize<'a>> {
-    effect_sizes.iter().find(|es| {
-        let benchmark_name = extract_benchmark_name(&es.wasm);
-        benchmark_name == benchmark
-            && (es.a_engine.as_ref() == engine_a && es.b_engine.as_ref() == engine_b
-                || es.a_engine.as_ref() == engine_b && es.b_engine.as_ref() == engine_a)
-    })
-}
-
-fn calculate_stats_for_counts(
-    counts: &[u64],
-    baseline_counts: Option<&[u64]>,
-    significance_level: f64,
-    effect_size_data: Option<&EffectSize>,
-) -> BenchmarkStats {
-    use sightglass_analysis::summarize::{
-        coefficient_of_variation, mean, percentile, std_deviation,
-    };
-
-    if counts.is_empty() {
-        return BenchmarkStats {
-            cv: 0.0,
-            std: 0.0,
-            mean: 0.0,
-            median: 0.0,
-            p25: 0.0,
-            p75: 0.0,
-            min: 0.0,
-            max: 0.0,
-            p25_delta_pct: 0.0,
-            mean_delta_pct: 0.0,
-            is_significant: false,
-            significance_level,
-            confidence_interval_half_width: None,
-            effect_size_mean_diff: None,
-            speedup_ratio: None,
-            speedup_confidence_interval: None,
-        };
+    // Remove prefix variations
+    if let Some(stripped) = path.strip_prefix("./benchmarks/") {
+        path = stripped;
+    } else if let Some(stripped) = path.strip_prefix("benchmarks/") {
+        path = stripped;
     }
 
-    let sorted_counts = counts.to_vec();
-    let mean_val = mean(counts);
-    let std_val = std_deviation(counts);
-    let p25_val = percentile(&mut sorted_counts.clone(), 25.0);
-    let p50_val = percentile(&mut sorted_counts.clone(), 50.0);
-    let p75_val = percentile(&mut sorted_counts.clone(), 75.0);
-    let min_val = *counts.iter().min().unwrap() as f64;
-    let max_val = *counts.iter().max().unwrap() as f64;
-    let cv_val = coefficient_of_variation(counts);
-
-    // Calculate statistical significance if we have baseline data
-    let (
-        p25_delta_pct,
-        mean_delta_pct,
-        is_significant,
-        confidence_interval_half_width,
-        effect_size_mean_diff,
-        speedup_ratio,
-        speedup_confidence_interval,
-    ) = if let Some(baseline_counts) = baseline_counts {
-        let baseline_mean = mean(baseline_counts);
-        let baseline_p25 = percentile(&mut baseline_counts.to_vec(), 25.0);
-        let p25_delta = (p25_val - baseline_p25) / (p25_val + baseline_p25) * 100.0;
-        let mean_delta = (mean_val - baseline_mean) / (mean_val + baseline_mean) * 100.0;
-
-        // Use effect size data if available
-        let (is_sig, ci, mean_diff, speedup, speedup_ci) = if let Some(es) = effect_size_data {
-            let (speedup_val, speedup_ci_val) = if es.a_mean < es.b_mean {
-                es.b_speed_up_over_a()
-            } else {
-                es.a_speed_up_over_b()
-            };
-
-            (
-                es.is_significant(),
-                Some(es.half_width_confidence_interval),
-                Some(es.b_mean - es.a_mean),
-                Some(speedup_val),
-                Some(speedup_ci_val),
-            )
-        } else {
-            // Fallback calculation when no effect size data available
-            let mean_diff = mean_val - baseline_mean;
-            let speedup = if baseline_mean > 0.0 {
-                mean_val / baseline_mean
-            } else {
-                1.0
-            };
-            (false, None, Some(mean_diff), Some(speedup), None)
-        };
-
-        (
-            p25_delta, mean_delta, is_sig, ci, mean_diff, speedup, speedup_ci,
-        )
-    } else {
-        (0.0, 0.0, false, None, None, None, None)
-    };
-
-    BenchmarkStats {
-        cv: cv_val,
-        std: std_val,
-        mean: mean_val,
-        median: p50_val,
-        p25: p25_val,
-        p75: p75_val,
-        min: min_val,
-        max: max_val,
-        p25_delta_pct,
-        mean_delta_pct,
-        is_significant,
-        significance_level,
-        confidence_interval_half_width,
-        effect_size_mean_diff,
-        speedup_ratio,
-        speedup_confidence_interval,
+    // Remove suffix variations
+    if let Some(stripped) = path.strip_suffix("/benchmark.wasm") {
+        path = stripped;
+    } else if let Some(stripped) = path.strip_suffix(".wasm") {
+        path = stripped;
     }
+
+    path.to_string()
+}
+
+fn get_available_events(measurements: &[Measurement]) -> String {
+    let mut events: Vec<&str> = measurements
+        .iter()
+        .map(|m| m.event.as_ref())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    events.sort();
+    events.join(", ")
+}
+
+fn get_available_phases(measurements: &[Measurement]) -> String {
+    let mut phases: Vec<String> = measurements
+        .iter()
+        .map(|m| format!("{:?}", m.phase))
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    phases.sort();
+    phases.join(", ")
 }
 
 fn parse_input(
@@ -263,12 +178,10 @@ fn parse_input(
         }
     };
 
-    // Filter to execution phase cycles only and add prefix
+    // Convert to owned strings for 'static lifetime and use prefix as engine name
     let filtered_measurements: Vec<Measurement<'static>> = measurements
         .into_iter()
-        .filter(|m| m.phase == Phase::Execution && m.event == "cycles")
         .map(|m| {
-            // Convert to owned strings for 'static lifetime and use prefix as engine name
             Measurement {
                 arch: std::borrow::Cow::Owned(m.arch.into_owned()),
                 engine: std::borrow::Cow::Owned(prefix.clone()),
@@ -370,83 +283,76 @@ impl ReportCommand {
         Ok(chart.to_string()?)
     }
 
-    fn baseline_prefix(&self, measurements: &[Measurement]) -> String {
-        if let Some(baseline) = &self.baseline_engine {
-            baseline.clone()
-        } else {
-            // Use the first engine found in measurements as the baseline
-            measurements
-                .iter()
-                .map(|m| extract_prefix_from_engine(&m.engine))
-                .next()
-                .unwrap_or_else(|| "baseline".to_string())
-        }
-    }
-
     fn compute_stats(&self, measurements: &[Measurement]) -> anyhow::Result<SightglassStats> {
+        // Create ReportConfig from CLI arguments
+        let config = ReportConfig::new()
+            .with_event(&self.primary_event)
+            .with_phase(self.target_phase)
+            .with_significance_level(self.significance_level);
 
-        // First calculate effect sizes for all measurements
-        let effect_sizes = effect_size::calculate(self.significance_level, measurements)?;
-        // Group measurements by benchmark name
-        let mut benchmark_groups: HashMap<String, Vec<&Measurement>> = HashMap::new();
+        let config = if let Some(ref baseline) = self.baseline_engine {
+            config.with_baseline_prefix(baseline)
+        } else {
+            config
+        };
 
-        for measurement in measurements {
-            let benchmark = extract_benchmark_name(&measurement.wasm);
-            benchmark_groups
-                .entry(benchmark)
-                .or_default()
-                .push(measurement);
+        // Use the new calculate_benchmark_stats function with ReportConfig
+        let benchmark_stats = calculate_benchmark_stats(measurements, &config);
+
+        // Check if we found any matching data
+        if benchmark_stats.is_empty() {
+            anyhow::bail!(
+                "No measurements found matching the specified criteria:\n\
+                 - Event: {}\n\
+                 - Phase: {:?}\n\
+                 \n\
+                 Available events: {}\n\
+                 Available phases: {}",
+                config.primary_event,
+                config.target_phase,
+                get_available_events(measurements),
+                get_available_phases(measurements)
+            );
         }
 
-        let baseline_prefix = self.baseline_prefix(measurements);
         let mut benchmarks_data: Vec<BenchmarkData> = Vec::new();
 
-        for (benchmark_name, benchmark_measurements) in benchmark_groups {
-            // Group measurements by prefix for this benchmark
-            let mut prefix_groups: HashMap<String, Vec<u64>> = HashMap::new();
+        // Determine baseline prefix for display
+        let first_available_prefix = benchmark_stats
+            .values()
+            .next()
+            .and_then(|stats| stats.keys().next())
+            .map(|s| s.clone());
 
-            for measurement in &benchmark_measurements {
-                let prefix = extract_prefix_from_engine(&measurement.engine);
-                prefix_groups
-                    .entry(prefix)
-                    .or_default()
-                    .push(measurement.count);
-            }
+        let baseline_prefix_for_display = config
+            .baseline_prefix
+            .clone()
+            .or(first_available_prefix)
+            .unwrap_or_else(|| "baseline".to_string());
 
-            // Calculate stats for each prefix
-            let mut stats_by_prefix = HashMap::new();
-            let baseline_counts = prefix_groups.get(&baseline_prefix);
-            let significance_level = self.significance_level;
-
-            for (prefix, counts) in &prefix_groups {
-                let effect_size_data = if prefix != &baseline_prefix {
-                    find_effect_size(&effect_sizes, &benchmark_name, prefix, &baseline_prefix)
-                } else {
-                    None
-                };
-
-                let stats = if prefix == &baseline_prefix {
-                    calculate_stats_for_counts(counts, None, significance_level, None)
-                } else {
-                    calculate_stats_for_counts(
-                        counts,
-                        baseline_counts.map(|c| c.as_slice()),
-                        significance_level,
-                        effect_size_data,
-                    )
-                };
-                stats_by_prefix.insert(prefix.clone(), stats);
-            }
+        // Convert the calculated benchmark stats to our display format
+        for (benchmark_name, stats_by_prefix) in benchmark_stats {
+            // Get baseline prefix from config or use first available
+            let baseline_prefix = config
+                .baseline_prefix
+                .as_deref()
+                .or_else(|| stats_by_prefix.keys().next().map(|s| s.as_str()))
+                .unwrap_or("baseline");
 
             let baseline_stats = stats_by_prefix
-                .get(&baseline_prefix)
-                .ok_or_else(|| {
-                    anyhow::anyhow!(
-                        "Unable to find baseline stats for benchmark: {}",
-                        benchmark_name
-                    )
-                })?
-                .clone();
+                .get(baseline_prefix)
+                .cloned()
+                .unwrap_or_else(|| stats_by_prefix.values().next().unwrap().clone());
+
+            // Get measurements for this benchmark that match our config filters
+            let benchmark_measurements: Vec<&Measurement> = measurements
+                .iter()
+                .filter(|m| {
+                    extract_benchmark_name(&m.wasm) == benchmark_name
+                        && m.phase == config.target_phase
+                        && m.event == config.primary_event
+                })
+                .collect();
 
             let chart_json =
                 self.plot_benchmark(&baseline_stats, &benchmark_name, &benchmark_measurements)?;
@@ -471,7 +377,7 @@ impl ReportCommand {
         benchmarks_data.sort_by(|a, b| a.name.cmp(&b.name));
 
         Ok(SightglassStats {
-            baseline_prefix: baseline_prefix.to_string(),
+            baseline_prefix: baseline_prefix_for_display,
             benchmarks: benchmarks_data,
         })
     }

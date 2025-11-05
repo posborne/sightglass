@@ -292,7 +292,7 @@ impl ReportCommand {
         &self,
         bstats: &BenchmarkStats,
         benchmark: &str,
-        measurements: &[Measurement],
+        measurements: &[&Measurement],
     ) -> anyhow::Result<String> {
         use vega_lite_4::{self as vl, VegaliteBuilder};
 
@@ -450,13 +450,8 @@ impl ReportCommand {
                 })?
                 .clone();
 
-            // Convert Vec<&Measurement> to Vec<Measurement> for the plot function
-            let owned_measurements: Vec<Measurement> = benchmark_measurements
-                .iter()
-                .map(|m| (*m).clone())
-                .collect();
             let chart_json =
-                self.plot_benchmark(&baseline_stats, &benchmark_name, &owned_measurements)?;
+                self.plot_benchmark(&baseline_stats, &benchmark_name, &benchmark_measurements)?;
             let id = {
                 let mut h = std::hash::DefaultHasher::new();
                 benchmark_name.hash(&mut h);

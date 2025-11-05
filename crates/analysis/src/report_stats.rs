@@ -1,6 +1,52 @@
 use crate::summarize::{coefficient_of_variation, mean, percentile, std_deviation};
-use sightglass_data::Measurement;
+use sightglass_data::{Measurement, Phase};
 use std::collections::HashMap;
+
+/// Configuration for benchmark report generation
+#[derive(Debug, Clone)]
+pub struct ReportConfig {
+    pub primary_event: String,
+    pub target_phase: Phase,
+    pub significance_level: f64,
+    pub baseline_prefix: Option<String>,
+}
+
+impl Default for ReportConfig {
+    fn default() -> Self {
+        Self {
+            primary_event: "cycles".to_string(),
+            target_phase: Phase::Execution,
+            significance_level: 0.05,
+            baseline_prefix: None,
+        }
+    }
+}
+
+impl ReportConfig {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn with_event(mut self, event: impl Into<String>) -> Self {
+        self.primary_event = event.into();
+        self
+    }
+
+    pub fn with_phase(mut self, phase: Phase) -> Self {
+        self.target_phase = phase;
+        self
+    }
+
+    pub fn with_significance_level(mut self, level: f64) -> Self {
+        self.significance_level = level;
+        self
+    }
+
+    pub fn with_baseline_prefix(mut self, prefix: impl Into<String>) -> Self {
+        self.baseline_prefix = Some(prefix.into());
+        self
+    }
+}
 
 /// Statistics calculated for a benchmark grouped by prefix.
 #[derive(Debug, Clone, serde::Serialize)]
@@ -8,8 +54,7 @@ pub struct BenchmarkStats {
     pub cv: f64,
     pub std: f64,
     pub mean: f64,
-    pub median: f64,
-    pub p50: f64,
+    pub median: f64,  // p50 - consolidated into median
     pub p25: f64,
     pub p75: f64,
     pub min: f64,
@@ -36,7 +81,7 @@ pub struct BenchmarkData {
 /// Calculate statistics for all benchmarks grouped by prefix.
 pub fn calculate_benchmark_stats<'a>(
     measurements: &[Measurement<'a>],
-    baseline_prefix: &str,
+    config: &ReportConfig,
 ) -> HashMap<String, HashMap<String, BenchmarkStats>> {
     let mut results: HashMap<String, HashMap<String, BenchmarkStats>> = HashMap::new();
 
@@ -44,8 +89,8 @@ pub fn calculate_benchmark_stats<'a>(
     let mut grouped: HashMap<String, HashMap<String, Vec<u64>>> = HashMap::new();
 
     for measurement in measurements {
-        // Only process execution phase cycles measurements
-        if measurement.phase != sightglass_data::Phase::Execution || measurement.event != "cycles" {
+        // Only process measurements matching the configured phase and event
+        if measurement.phase != config.target_phase || measurement.event != config.primary_event {
             continue;
         }
 
@@ -63,8 +108,15 @@ pub fn calculate_benchmark_stats<'a>(
     // Calculate statistics for each group
     for (benchmark, prefixes) in grouped {
         let mut benchmark_results = HashMap::new();
-        let baseline_counts = prefixes.get(baseline_prefix).cloned();
-        let significance_level = 0.05; // Default significance level
+
+        // Determine baseline prefix from config or use first available
+        let baseline_prefix = config.baseline_prefix
+            .clone()
+            .or_else(|| prefixes.keys().next().cloned())
+            .unwrap_or_else(|| "baseline".to_string());
+
+        let baseline_counts = prefixes.get(&baseline_prefix).cloned();
+        let significance_level = config.significance_level;
 
         for (prefix, counts) in prefixes {
             let stats = if prefix == baseline_prefix {
@@ -117,8 +169,7 @@ fn calculate_stats_for_counts(
             cv: 0.0,
             std: 0.0,
             mean: 0.0,
-            median: 0.0,
-            p50: 0.0,
+            median: 0.0,  // p50 consolidated into median
             p25: 0.0,
             p75: 0.0,
             min: 0.0,
@@ -203,8 +254,7 @@ fn calculate_stats_for_counts(
         cv: cv_val,
         std: std_val,
         mean: mean_val,
-        median: p50_val,
-        p50: p50_val,
+        median: p50_val,  // p50 consolidated into median
         p25: p25_val,
         p75: p75_val,
         min: min_val,
@@ -238,12 +288,12 @@ mod tests {
     #[test]
     fn test_calculate_stats_for_counts() {
         let counts = vec![1, 2, 3, 4, 5];
-        let stats = calculate_stats_for_counts(&counts, None);
+        let stats = calculate_stats_for_counts(&counts, None, 0.05, None);
 
         assert_eq!(stats.mean, 3.0);
         assert_eq!(stats.min, 1.0);
         assert_eq!(stats.max, 5.0);
-        assert_eq!(stats.p50, 3.0);
+        assert_eq!(stats.median, 3.0);  // changed from p50 to median
         assert!(stats.cv > 0.0);
     }
 }

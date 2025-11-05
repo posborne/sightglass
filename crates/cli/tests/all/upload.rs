@@ -1,6 +1,5 @@
 //! Test `sightglass-cli upload`.
 
-
 // Because the `results.json` contains `*.so` suffixes for the engine, this test
 // can only run where the fingerprinted engine will have a matching suffix,
 // i.e., Linux.

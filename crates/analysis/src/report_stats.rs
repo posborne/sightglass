@@ -54,7 +54,7 @@ pub struct BenchmarkStats {
     pub cv: f64,
     pub std: f64,
     pub mean: f64,
-    pub median: f64,  // p50 - consolidated into median
+    pub median: f64, // p50 - consolidated into median
     pub p25: f64,
     pub p75: f64,
     pub min: f64,
@@ -110,7 +110,8 @@ pub fn calculate_benchmark_stats<'a>(
         let mut benchmark_results = HashMap::new();
 
         // Determine baseline prefix from config or use first available
-        let baseline_prefix = config.baseline_prefix
+        let baseline_prefix = config
+            .baseline_prefix
             .clone()
             .or_else(|| prefixes.keys().next().cloned())
             .unwrap_or_else(|| "baseline".to_string());
@@ -140,14 +141,23 @@ pub fn calculate_benchmark_stats<'a>(
 
 /// Extract benchmark name from wasm file path.
 fn extract_benchmark_name(wasm_path: &str) -> String {
-    wasm_path
-        .strip_prefix("benchmarks/")
-        .unwrap_or(wasm_path)
-        .strip_suffix("/benchmark.wasm")
-        .unwrap_or(wasm_path)
-        .strip_suffix(".wasm")
-        .unwrap_or(wasm_path)
-        .to_string()
+    let mut path = wasm_path;
+
+    // Remove prefix variations
+    if let Some(stripped) = path.strip_prefix("./benchmarks/") {
+        path = stripped;
+    } else if let Some(stripped) = path.strip_prefix("benchmarks/") {
+        path = stripped;
+    }
+
+    // Remove suffix variations
+    if let Some(stripped) = path.strip_suffix("/benchmark.wasm") {
+        path = stripped;
+    } else if let Some(stripped) = path.strip_suffix(".wasm") {
+        path = stripped;
+    }
+
+    path.to_string()
 }
 
 /// Extract prefix from measurement (could be enhanced to use actual prefix logic).
@@ -169,7 +179,7 @@ fn calculate_stats_for_counts(
             cv: 0.0,
             std: 0.0,
             mean: 0.0,
-            median: 0.0,  // p50 consolidated into median
+            median: 0.0, // p50 consolidated into median
             p25: 0.0,
             p75: 0.0,
             min: 0.0,
@@ -254,7 +264,7 @@ fn calculate_stats_for_counts(
         cv: cv_val,
         std: std_val,
         mean: mean_val,
-        median: p50_val,  // p50 consolidated into median
+        median: p50_val, // p50 consolidated into median
         p25: p25_val,
         p75: p75_val,
         min: min_val,
@@ -273,7 +283,6 @@ fn calculate_stats_for_counts(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sightglass_data::Phase;
 
     #[test]
     fn test_extract_benchmark_name() {
@@ -293,7 +302,7 @@ mod tests {
         assert_eq!(stats.mean, 3.0);
         assert_eq!(stats.min, 1.0);
         assert_eq!(stats.max, 5.0);
-        assert_eq!(stats.median, 3.0);  // changed from p50 to median
+        assert_eq!(stats.median, 3.0); // changed from p50 to median
         assert!(stats.cv > 0.0);
     }
 }

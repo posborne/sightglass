@@ -54,9 +54,9 @@ pub fn calculate_benchmark_stats<'a>(
 
         grouped
             .entry(benchmark)
-            .or_insert_with(HashMap::new)
+            .or_default()
             .entry(prefix)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(measurement.count);
     }
 
@@ -72,7 +72,7 @@ pub fn calculate_benchmark_stats<'a>(
             } else {
                 calculate_stats_for_counts(
                     &counts,
-                    baseline_counts.as_ref().map(|c| c.as_slice()),
+                    baseline_counts.as_deref(),
                     significance_level,
                     None,
                 )

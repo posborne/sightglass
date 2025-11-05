@@ -16,7 +16,7 @@ use vega_lite_4::{
     XClassBuilder, YClassBuilder,
 };
 
-const TEMPLATE: &'static str =
+const TEMPLATE: &str =
     include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/report.jinja"));
 
 /// Generate an HTML report for a given set of raw inputs
@@ -399,7 +399,7 @@ impl ReportCommand {
             let benchmark = extract_benchmark_name(&measurement.wasm);
             benchmark_groups
                 .entry(benchmark)
-                .or_insert_with(Vec::new)
+                .or_default()
                 .push(measurement);
         }
 
@@ -414,7 +414,7 @@ impl ReportCommand {
                 let prefix = extract_prefix_from_engine(&measurement.engine);
                 prefix_groups
                     .entry(prefix)
-                    .or_insert_with(Vec::new)
+                    .or_default()
                     .push(measurement.count);
             }
 

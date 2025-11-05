@@ -1,5 +1,5 @@
 use crate::summarize::{coefficient_of_variation, mean, percentile, std_deviation};
-use sightglass_data::{Measurement, Phase};
+use sightglass_data::{extract_benchmark_name, Measurement, Phase};
 use std::collections::HashMap;
 
 /// Configuration for benchmark report generation
@@ -139,26 +139,6 @@ pub fn calculate_benchmark_stats<'a>(
     results
 }
 
-/// Extract benchmark name from wasm file path.
-fn extract_benchmark_name(wasm_path: &str) -> String {
-    let mut path = wasm_path;
-
-    // Remove prefix variations
-    if let Some(stripped) = path.strip_prefix("./benchmarks/") {
-        path = stripped;
-    } else if let Some(stripped) = path.strip_prefix("benchmarks/") {
-        path = stripped;
-    }
-
-    // Remove suffix variations
-    if let Some(stripped) = path.strip_suffix("/benchmark.wasm") {
-        path = stripped;
-    } else if let Some(stripped) = path.strip_suffix(".wasm") {
-        path = stripped;
-    }
-
-    path.to_string()
-}
 
 /// Extract prefix from measurement (could be enhanced to use actual prefix logic).
 fn extract_prefix_from_measurement<'a>(measurement: &Measurement<'a>) -> String {
@@ -284,15 +264,6 @@ fn calculate_stats_for_counts(
 mod tests {
     use super::*;
 
-    #[test]
-    fn test_extract_benchmark_name() {
-        assert_eq!(
-            extract_benchmark_name("benchmarks/foo/benchmark.wasm"),
-            "foo"
-        );
-        assert_eq!(extract_benchmark_name("benchmarks/bar.wasm"), "bar");
-        assert_eq!(extract_benchmark_name("simple.wasm"), "simple");
-    }
 
     #[test]
     fn test_calculate_stats_for_counts() {

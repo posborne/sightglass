@@ -9,7 +9,7 @@ use std::{
 
 use serde::Serialize;
 use sightglass_analysis::report_stats::{calculate_benchmark_stats, BenchmarkStats, ReportConfig};
-use sightglass_data::{Format, Measurement, Phase};
+use sightglass_data::{extract_benchmark_name, Format, Measurement, Phase};
 use structopt::StructOpt;
 use vega_lite_4::{
     AxisBuilder, ColorClassBuilder, EdEncodingBuilder, LegendBuilder, Mark, NormalizedSpecBuilder,
@@ -86,25 +86,6 @@ fn extract_prefix_from_engine(engine: &str) -> String {
     engine.to_string()
 }
 
-fn extract_benchmark_name(wasm_path: &str) -> String {
-    let mut path = wasm_path;
-
-    // Remove prefix variations
-    if let Some(stripped) = path.strip_prefix("./benchmarks/") {
-        path = stripped;
-    } else if let Some(stripped) = path.strip_prefix("benchmarks/") {
-        path = stripped;
-    }
-
-    // Remove suffix variations
-    if let Some(stripped) = path.strip_suffix("/benchmark.wasm") {
-        path = stripped;
-    } else if let Some(stripped) = path.strip_suffix(".wasm") {
-        path = stripped;
-    }
-
-    path.to_string()
-}
 
 fn get_available_events(measurements: &[Measurement]) -> String {
     let mut events: Vec<&str> = measurements

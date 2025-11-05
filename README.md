@@ -218,22 +218,30 @@ $ cargo run -- benchmark --raw --output-format json -- benchmark.wasm
 ```
 
 Then you can use your own R/Python/spreadsheets/etc. to analyze and visualize
-the benchmark results.  The JSON output is also compatible with the viz.py
-script in tree.
+the benchmark results.
 
-### Benchmark Results Visualization (viz.py)
+### HTML Report Generation
 
-For results collected in the JSON format, a tool is provided in tree that can
-visualize benchmark results as an HTML document with embedded graphics.  This
-tool requires that the python
-[`uv`](https://docs.astral.sh/uv/getting-started/installation/) tool be
-installed.
+For results collected in the JSON format, sightglass includes a built-in `report`
+subcommand that generates comprehensive HTML reports with statistical analysis and
+interactive visualizations. This approach provides rigorous statistical significance
+testing following the Bytecode Alliance RFC standards.
 
+```bash
+# Generate HTML report comparing multiple measurement files
+$ cargo run -- report --output-file report.html baseline.json experiment1.json experiment2.json
+
+# Specify which engine serves as the baseline for comparisons
+$ cargo run -- report --baseline-engine wasmtime-baseline --output-file report.html baseline.json experiment.json
 ```
-$ ./scripts/viz.py -o experiment.html baseline.json experiment1.json experiment2.json
-```
 
-See the `--help` option on the tool for additional usage options.
+The generated HTML report includes:
+- Statistical significance testing with confidence intervals
+- Interactive charts showing performance distributions
+- Effect size analysis with practical significance assessment
+- Filtering and sorting capabilities for large result sets
+
+See `cargo run -- report --help` for all available options.
 
 ### Adding a New Benchmark
 

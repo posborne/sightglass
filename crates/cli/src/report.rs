@@ -23,7 +23,7 @@ const TEMPLATE: &str = include_str!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/re
 #[structopt(name = "report")]
 pub struct ReportCommand {
     /// The format of the input data. Either 'json' or 'csv'; if not provided
-    /// then we will attempt to infer it from provided filenames (default: json).
+    /// then we will attempt to infer it from provided filenames, falling back to json.
     #[structopt(short = "i", long = "input-format")]
     input_format: Option<Format>,
 

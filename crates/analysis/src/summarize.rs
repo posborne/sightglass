@@ -68,22 +68,21 @@ pub fn std_deviation(numbers: &[u64]) -> f64 {
     variance.sqrt()
 }
 
-/// Calculate a specific percentile of a slice of numbers.
-pub fn percentile(numbers: &mut [u64], p: f64) -> f64 {
-    if numbers.is_empty() {
+/// Calculate a specific percentile from already-sorted data.
+pub fn percentile_from_sorted(sorted_numbers: &[u64], p: f64) -> f64 {
+    if sorted_numbers.is_empty() {
         return 0.0;
     }
 
-    numbers.sort();
-    let index = (p / 100.0) * (numbers.len() - 1) as f64;
+    let index = (p / 100.0) * (sorted_numbers.len() - 1) as f64;
     let lower = index.floor() as usize;
     let upper = index.ceil() as usize;
 
     if lower == upper {
-        numbers[lower] as f64
+        sorted_numbers[lower] as f64
     } else {
         let weight = index - lower as f64;
-        (numbers[lower] as f64) * (1.0 - weight) + (numbers[upper] as f64) * weight
+        (sorted_numbers[lower] as f64) * (1.0 - weight) + (sorted_numbers[upper] as f64) * weight
     }
 }
 
@@ -166,6 +165,7 @@ mod tests {
                 phase: Phase::Compilation,
                 event: "cycles".into(),
                 count,
+                engine_flags: None,
             }
         }
 
@@ -200,6 +200,7 @@ mod tests {
                 phase,
                 event: "cycles".into(),
                 count,
+                engine_flags: None,
             }
         }
         let measurements = vec![
@@ -219,11 +220,12 @@ mod tests {
     }
 
     #[test]
-    fn test_percentile() {
+    fn test_percentile_from_sorted() {
         let mut numbers = vec![1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
-        assert_eq!(percentile(&mut numbers, 50.0), 5.5);
-        assert_eq!(percentile(&mut numbers, 25.0), 3.25);
-        assert_eq!(percentile(&mut numbers, 75.0), 7.75);
+        numbers.sort();
+        assert_eq!(percentile_from_sorted(&numbers, 50.0), 5.5);
+        assert_eq!(percentile_from_sorted(&numbers, 25.0), 3.25);
+        assert_eq!(percentile_from_sorted(&numbers, 75.0), 7.75);
     }
 
     #[test]

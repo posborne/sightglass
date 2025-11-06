@@ -1,4 +1,4 @@
-use crate::summarize::{coefficient_of_variation, mean, percentile, std_deviation};
+use crate::summarize::{coefficient_of_variation, mean, percentile_from_sorted, std_deviation};
 use sightglass_data::{extract_benchmark_name, Measurement, Phase};
 use std::collections::HashMap;
 use thiserror::Error;
@@ -215,18 +215,20 @@ fn calculate_stats_for_measurements(
     let mean = mean(measurements);
     let std = std_deviation(measurements);
     let mut sorted_measurements = measurements.to_vec();
-    let p25 = percentile(&mut sorted_measurements, 25.0);
-    let median = percentile(&mut sorted_measurements, 50.0);
-    let p75 = percentile(&mut sorted_measurements, 75.0);
-    let min = *measurements.iter().min().unwrap() as f64;
-    let max = *measurements.iter().max().unwrap() as f64;
+    sorted_measurements.sort();
+    let p25 = percentile_from_sorted(&sorted_measurements, 25.0);
+    let median = percentile_from_sorted(&sorted_measurements, 50.0);
+    let p75 = percentile_from_sorted(&sorted_measurements, 75.0);
+    let min = sorted_measurements[0] as f64;
+    let max = sorted_measurements[sorted_measurements.len() - 1] as f64;
     let cv = coefficient_of_variation(measurements);
 
     // Calculate relative statistics if we have baseline data
     let relative_stats = if let Some(baseline_measurements) = baseline_measurements {
         let baseline_mean = crate::summarize::mean(baseline_measurements);
         let mut baseline_sorted = baseline_measurements.to_vec();
-        let baseline_p25 = percentile(&mut baseline_sorted, 25.0);
+        baseline_sorted.sort();
+        let baseline_p25 = percentile_from_sorted(&baseline_sorted, 25.0);
         let p25_delta_pct = (p25 - baseline_p25) / (p25 + baseline_p25) * 100.0;
         let mean_delta_pct = (mean - baseline_mean) / (mean + baseline_mean) * 100.0;
 

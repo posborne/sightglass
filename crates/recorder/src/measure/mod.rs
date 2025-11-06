@@ -31,7 +31,12 @@ impl<'a> Measurements<'a> {
     }
 
     /// Construct a new `Measurements` with engine flags.
-    pub fn with_flags(arch: &'a str, engine: &'a str, wasm: &'a str, engine_flags: Option<&'a str>) -> Self {
+    pub fn with_flags(
+        arch: &'a str,
+        engine: &'a str,
+        wasm: &'a str,
+        engine_flags: Option<&'a str>,
+    ) -> Self {
         Measurements {
             arch,
             engine,

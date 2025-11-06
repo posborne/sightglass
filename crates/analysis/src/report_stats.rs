@@ -175,9 +175,14 @@ pub fn calculate_benchmark_stats<'a>(
     Ok(results)
 }
 
-/// Extract engine name from measurement.
+/// Extract engine name from measurement, including flags for disambiguation.
 fn extract_engine_name<'a>(measurement: &Measurement<'a>) -> String {
-    measurement.engine.to_string()
+    match &measurement.engine_flags {
+        Some(flags) if !flags.is_empty() => {
+            format!("{} [{}]", measurement.engine, flags)
+        }
+        _ => measurement.engine.to_string()
+    }
 }
 
 /// Calculate statistics for a group of measurements.

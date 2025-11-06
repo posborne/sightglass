@@ -100,7 +100,7 @@ fn create_display_engine_name(measurement: &Measurement) -> String {
         Some(flags) if !flags.is_empty() => {
             format!("{} [{}]", measurement.engine, flags)
         }
-        _ => measurement.engine.to_string()
+        _ => measurement.engine.to_string(),
     }
 }
 
@@ -248,7 +248,8 @@ impl ReportCommand {
         let first_available_engine = benchmark_stats
             .values()
             .next()
-            .and_then(|stats| stats.keys().next()).cloned();
+            .and_then(|stats| stats.keys().next())
+            .cloned();
 
         let baseline_engine_for_display = config
             .baseline_engine

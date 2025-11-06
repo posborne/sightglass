@@ -181,7 +181,7 @@ fn extract_engine_name<'a>(measurement: &Measurement<'a>) -> String {
         Some(flags) if !flags.is_empty() => {
             format!("{} [{}]", measurement.engine, flags)
         }
-        _ => measurement.engine.to_string()
+        _ => measurement.engine.to_string(),
     }
 }
 

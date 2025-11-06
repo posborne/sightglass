@@ -137,26 +137,32 @@ pub fn calculate_benchmark_stats<'a>(
     }
 
     // Calculate statistics for each group
-    for (benchmark, engines) in grouped {
+    for (benchmark, benchmark_measurements_by_engine) in grouped {
         let mut benchmark_results = HashMap::new();
 
         // Use the baseline engine from config
-        let baseline_engine = config.baseline_engine.clone();
+        let baseline_engine = config.baseline_engine.as_str();
 
-        let baseline_counts = engines.get(&baseline_engine).cloned();
+        // Ensure baseline engine exists in measurements
+        let baseline_measurements = benchmark_measurements_by_engine
+            .get(baseline_engine)
+            .ok_or_else(|| {
+                AnalysisError::StatisticalError(format!(
+                    "Baseline engine '{}' not found in measurements for benchmark '{}'",
+                    baseline_engine, benchmark
+                ))
+            })?;
+
+        let baseline_measurements = Some(baseline_measurements.as_slice());
         let significance_level = config.significance_level;
 
-        for (engine, counts) in engines {
+        for (engine, counts) in benchmark_measurements_by_engine.iter() {
             let stats = if engine == baseline_engine {
-                calculate_stats_for_measurements(&counts, None, significance_level)?
+                calculate_stats_for_measurements(counts, None, significance_level)?
             } else {
-                calculate_stats_for_measurements(
-                    &counts,
-                    baseline_counts.as_deref(),
-                    significance_level,
-                )?
+                calculate_stats_for_measurements(counts, baseline_measurements, significance_level)?
             };
-            benchmark_results.insert(engine, stats);
+            benchmark_results.insert(engine.clone(), stats);
         }
 
         results.insert(benchmark, benchmark_results);

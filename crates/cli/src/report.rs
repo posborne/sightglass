@@ -104,6 +104,22 @@ fn create_display_engine_name(measurement: &Measurement) -> String {
     }
 }
 
+fn determine_baseline_engine(
+    measurements: &[Measurement],
+    requested_baseline: Option<&String>,
+) -> String {
+    if let Some(baseline) = requested_baseline {
+        return baseline.clone();
+    }
+
+    // Get first available engine from measurements
+    measurements
+        .iter()
+        .map(|m| create_display_engine_name(m))
+        .next()
+        .unwrap_or_else(|| "baseline".to_string())
+}
+
 fn parse_input(
     format: Option<Format>,
     path: impl AsRef<Path>,
@@ -211,17 +227,15 @@ impl ReportCommand {
     }
 
     fn compute_stats(&self, measurements: &[Measurement]) -> anyhow::Result<SightglassStats> {
+        // Determine baseline engine from CLI args or first available
+        let baseline_engine =
+            determine_baseline_engine(measurements, self.baseline_engine.as_ref());
+
         // Create ReportConfig from CLI arguments
-        let config = ReportConfig::new()
+        let config = ReportConfig::new(baseline_engine)
             .with_event(&self.primary_event)
             .with_phase(self.target_phase)
             .with_significance_level(self.significance_level);
-
-        let config = if let Some(ref baseline) = self.baseline_engine {
-            config.with_baseline_engine(baseline)
-        } else {
-            config
-        };
 
         // Use the new calculate_benchmark_stats function with ReportConfig
         let benchmark_stats = calculate_benchmark_stats(measurements, &config)?;
@@ -244,27 +258,12 @@ impl ReportCommand {
 
         let mut benchmarks_data: Vec<BenchmarkData> = Vec::new();
 
-        // Determine baseline engine for display
-        let first_available_engine = benchmark_stats
-            .values()
-            .next()
-            .and_then(|stats| stats.keys().next())
-            .cloned();
-
-        let baseline_engine_for_display = config
-            .baseline_engine
-            .clone()
-            .or(first_available_engine)
-            .unwrap_or_else(|| "baseline".to_string());
+        let baseline_engine_for_display = config.baseline_engine.clone();
 
         // Convert the calculated benchmark stats to our display format
         for (benchmark_name, stats_by_engine) in benchmark_stats {
-            // Get baseline engine from config or use first available
-            let baseline_engine = config
-                .baseline_engine
-                .as_deref()
-                .or_else(|| stats_by_engine.keys().next().map(|s| s.as_str()))
-                .unwrap_or("baseline");
+            // Use baseline engine from config
+            let baseline_engine = config.baseline_engine.as_str();
 
             let baseline_stats = stats_by_engine
                 .get(baseline_engine)

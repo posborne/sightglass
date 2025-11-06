@@ -32,7 +32,7 @@ fn upload_dryrun() {
     assert_eq!(num_uploaded_batches, 3);
 
     // Also, heck that we create records for the engine/machine/benchmark.
-    use predicate::str::*;
+    use predicates::str::*;
     assert
         .stderr(
             contains(format!(

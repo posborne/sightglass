@@ -5,7 +5,6 @@ use scraper::{Html, Selector};
 use std::fs;
 use tempfile::TempDir;
 
-
 // Helper function to get the original single-engine test data file path at compile time
 fn test_results_json() -> &'static str {
     // CARGO_MANIFEST_DIR points to the directory containing Cargo.toml for this crate
@@ -20,9 +19,11 @@ fn multi_engine_v38_json() -> &'static str {
 }
 
 fn multi_engine_v38_epoch_json() -> &'static str {
-    concat!(env!("CARGO_MANIFEST_DIR"), "/tests/multi_engine_v38_epoch.json")
+    concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/tests/multi_engine_v38_epoch.json"
+    )
 }
-
 
 // Helper function to get the original baseline engine path for legacy single-engine data
 fn baseline_engine_path() -> &'static str {
@@ -53,10 +54,10 @@ fn run_report_with_significance(level: &str, input_files: &[&str]) -> String {
 
     let mut cmd = sightglass_cli();
     cmd.arg("report")
-       .arg("--significance-level")
-       .arg(level)
-       .arg("--output-file")
-       .arg(&output_path);
+        .arg("--significance-level")
+        .arg(level)
+        .arg("--output-file")
+        .arg(&output_path);
 
     for file in input_files {
         cmd.arg(file);
@@ -73,10 +74,10 @@ fn run_report_with_baseline(baseline: &str, input_files: &[&str]) -> String {
 
     let mut cmd = sightglass_cli();
     cmd.arg("report")
-       .arg("--baseline-engine")
-       .arg(baseline)
-       .arg("--output-file")
-       .arg(&output_path);
+        .arg("--baseline-engine")
+        .arg(baseline)
+        .arg("--output-file")
+        .arg(&output_path);
 
     for file in input_files {
         cmd.arg(file);
@@ -92,7 +93,6 @@ fn count_css_elements(html_content: &str, selector: &str) -> usize {
     let css_selector = Selector::parse(selector).unwrap();
     document.select(&css_selector).count()
 }
-
 
 #[test]
 fn report_help() {
@@ -115,15 +115,16 @@ fn report_help() {
 #[test]
 fn report_with_existing_json() {
     // Use multi-engine data to showcase the report's real value
-    let html_content = run_report_command(&[
-        multi_engine_v38_json(),
-        multi_engine_v38_epoch_json(),
-    ]);
+    let html_content =
+        run_report_command(&[multi_engine_v38_json(), multi_engine_v38_epoch_json()]);
 
     // Check for specific performance regression indicators based on our test data
     // The epoch-interruption engine should be slower for all benchmarks
     let slower_in_table = count_css_elements(&html_content, "table .slower");
-    assert_eq!(slower_in_table, 3, "Should have exactly 3 'slower' indicators in the table for the three benchmarks");
+    assert_eq!(
+        slower_in_table, 3,
+        "Should have exactly 3 'slower' indicators in the table for the three benchmarks"
+    );
 
     // Verify specific performance degradation percentages from our data
     assert!(html_content.contains("19.44% slower") || html_content.contains("20.99% slower"));
@@ -131,7 +132,10 @@ fn report_with_existing_json() {
 
     // Check for statistical significance indicators
     let table_count = count_css_elements(&html_content, "#results-table");
-    assert_eq!(table_count, 1, "Should have exactly one results table with ID 'results-table'");
+    assert_eq!(
+        table_count, 1,
+        "Should have exactly one results table with ID 'results-table'"
+    );
 
     // Check for baseline engine designation
     assert!(html_content.contains("(baseline)"));
@@ -141,7 +145,6 @@ fn report_with_existing_json() {
     assert!(html_content.contains("\"title\":\"pulldown-cmark\""));
     assert!(html_content.contains("\"title\":\"spidermonkey\""));
 }
-
 
 #[test]
 fn report_format_inference_from_extension() {
@@ -164,10 +167,7 @@ fn report_format_inference_from_extension() {
 
 #[test]
 fn report_with_custom_baseline_engine() {
-    let html_content = run_report_with_baseline(
-        baseline_engine_path(),
-        &[test_results_json()],
-    );
+    let html_content = run_report_with_baseline(baseline_engine_path(), &[test_results_json()]);
 
     // Verify the custom baseline engine is properly marked
     assert!(html_content.contains("libengine.so"));
@@ -253,7 +253,7 @@ fn report_error_invalid_event() {
         .failure()
         .stderr(
             predicate::str::contains("No measurements found")
-                .and(predicate::str::contains("nonexistent_event"))
+                .and(predicate::str::contains("nonexistent_event")),
         );
 }
 
@@ -303,14 +303,15 @@ fn report_default_output_filename() {
 #[test]
 fn report_marks_inconsistent_high_cv() {
     // Use multi-engine data which should have some high CV measurements
-    let html_content = run_report_command(&[
-        multi_engine_v38_json(),
-        multi_engine_v38_epoch_json(),
-    ]);
+    let html_content =
+        run_report_command(&[multi_engine_v38_json(), multi_engine_v38_epoch_json()]);
 
     // Check for inconsistent/noisy measurements (CV > 5%)
     let inconsistent_count = count_css_elements(&html_content, ".inconsistent");
-    assert!(inconsistent_count > 0, "Should have at least one inconsistent measurement marked");
+    assert!(
+        inconsistent_count > 0,
+        "Should have at least one inconsistent measurement marked"
+    );
 
     // Verify the inconsistent marking includes CV percentage
     assert!(html_content.contains("CV:") && html_content.contains("%"));
@@ -329,17 +330,21 @@ fn report_baseline_selection_override() {
         input_files,
     );
 
-    // Default baseline should be the regular engine
+    // Default baseline should be the regular engine (full name)
     assert!(html_content1.contains("engines/wasmtime/wasmtime-v38/libengine.dylib (baseline)"));
     assert!(!html_content1.contains("[-W epoch-interruption=y] (baseline)"));
 
     // Override baseline should be the epoch engine
-    assert!(html_content2.contains("[-W epoch-interruption=y] (baseline)"));
-    assert!(!html_content2.contains("engines/wasmtime/wasmtime-v38/libengine.dylib (baseline)"));
+    assert!(html_content2.contains(
+        "engines/wasmtime/wasmtime-v38/libengine.dylib [-W epoch-interruption=y] (baseline)"
+    ));
 
     // The statistical results should be inverted - what was "slower" should now be "faster"
     // Since we're changing which engine is the baseline
-    assert_ne!(html_content1, html_content2, "Reports with different baselines should produce different results");
+    assert_ne!(
+        html_content1, html_content2,
+        "Reports with different baselines should produce different results"
+    );
 }
 
 #[test]
@@ -357,10 +362,10 @@ fn report_different_significance_levels() {
     assert!(html_content_lenient.contains("90.00%"));
 
     // Count significant results (slower/faster classes) - lenient should have more
-    let significant_strict = count_css_elements(&html_content_strict, ".slower") +
-                             count_css_elements(&html_content_strict, ".faster");
-    let significant_lenient = count_css_elements(&html_content_lenient, ".slower") +
-                              count_css_elements(&html_content_lenient, ".faster");
+    let significant_strict = count_css_elements(&html_content_strict, ".slower")
+        + count_css_elements(&html_content_strict, ".faster");
+    let significant_lenient = count_css_elements(&html_content_lenient, ".slower")
+        + count_css_elements(&html_content_lenient, ".faster");
 
     // Lenient significance level should find same or more significant results
     assert!(significant_lenient >= significant_strict,

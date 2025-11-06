@@ -95,6 +95,7 @@ fn get_available_phases(measurements: &[Measurement]) -> String {
     phases.join(", ")
 }
 
+
 fn create_display_engine_name(measurement: &Measurement) -> String {
     match &measurement.engine_flags {
         Some(flags) if !flags.is_empty() => {
@@ -160,11 +161,15 @@ impl ReportCommand {
 
         let chart_data: Vec<ChartDataPoint> = measurements
             .iter()
-            .map(|m| ChartDataPoint {
-                count: m.count,
-                engine: create_display_engine_name(m),
-                p25_delta_pct: (100.0 * (m.count as f64 - bstats.p25)
-                    / ((m.count as f64 + bstats.p25) / 2.0)),
+            .map(|m| {
+                let original_name = create_display_engine_name(m);
+                // Use the full original name for the chart data so it appears in the legend
+                ChartDataPoint {
+                    count: m.count,
+                    engine: original_name,
+                    p25_delta_pct: (100.0 * (m.count as f64 - bstats.p25)
+                        / ((m.count as f64 + bstats.p25) / 2.0)),
+                }
             })
             .collect();
         let cycles_chart = NormalizedSpecBuilder::default()
@@ -180,11 +185,20 @@ impl ReportCommand {
                     .y(YClassBuilder::default()
                         .field("engine")
                         .position_def_type(vl::Type::Nominal)
+                        .axis(AxisBuilder::default().labels(false).build()?)
                         .build()?)
                     .color(
                         ColorClassBuilder::default()
                             .field("engine")
-                            .legend(LegendBuilder::default().title("Engine").build()?)
+                            .legend(
+                                LegendBuilder::default()
+                                    .title("Engine")
+                                    .orient(vega_lite_4::LegendOrient::Bottom)
+                                    .label_limit(600.0)
+                                    .direction(vega_lite_4::Orientation::Vertical)
+                                    .columns(1.0)
+                                    .build()?,
+                            )
                             .build()?,
                     )
                     .build()?,
@@ -207,11 +221,20 @@ impl ReportCommand {
                     .y(YClassBuilder::default()
                         .field("engine")
                         .position_def_type(vl::Type::Nominal)
+                        .axis(AxisBuilder::default().labels(false).build()?)
                         .build()?)
                     .color(
                         ColorClassBuilder::default()
                             .field("engine")
-                            .legend(LegendBuilder::default().title("Engine").build()?)
+                            .legend(
+                                LegendBuilder::default()
+                                    .title("Engine")
+                                    .orient(vega_lite_4::LegendOrient::Bottom)
+                                    .label_limit(600.0)
+                                    .direction(vega_lite_4::Orientation::Vertical)
+                                    .columns(1.0)
+                                    .build()?,
+                            )
                             .build()?,
                     )
                     .build()?,
@@ -227,11 +250,12 @@ impl ReportCommand {
     }
 
     fn compute_stats(&self, measurements: &[Measurement]) -> anyhow::Result<SightglassStats> {
+
         // Determine baseline engine from CLI args or first available
         let baseline_engine =
             determine_baseline_engine(measurements, self.baseline_engine.as_ref());
 
-        // Create ReportConfig from CLI arguments
+        // Create ReportConfig from CLI arguments (still using original names for logic)
         let config = ReportConfig::new(baseline_engine)
             .with_event(&self.primary_event)
             .with_phase(self.target_phase)
@@ -258,6 +282,7 @@ impl ReportCommand {
 
         let mut benchmarks_data: Vec<BenchmarkData> = Vec::new();
 
+        // Keep original baseline name for display
         let baseline_engine_for_display = config.baseline_engine.clone();
 
         // Convert the calculated benchmark stats to our display format

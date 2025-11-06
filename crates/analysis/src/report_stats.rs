@@ -64,9 +64,22 @@ impl ReportConfig {
     }
 }
 
+/// Statistics relative to a baseline measurement
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct RelativeStats {
+    pub p25_delta_pct: f64,
+    pub mean_delta_pct: f64,
+    pub is_significant: bool,
+    pub effect_size_mean_diff: f64,
+    pub speedup_ratio: f64,
+    pub confidence_interval_half_width: Option<f64>,
+    pub speedup_confidence_interval: Option<f64>,
+}
+
 /// Statistics calculated for a benchmark grouped by prefix.
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct BenchmarkStats {
+    // Core statistics (always present)
     pub cv: f64,
     pub std: f64,
     pub mean: f64,
@@ -75,15 +88,10 @@ pub struct BenchmarkStats {
     pub p75: f64,
     pub min: f64,
     pub max: f64,
-    pub p25_delta_pct: f64,
-    pub mean_delta_pct: f64,
-    // Statistical significance fields
-    pub is_significant: bool,
     pub significance_level: f64,
-    pub confidence_interval_half_width: Option<f64>,
-    pub effect_size_mean_diff: Option<f64>,
-    pub speedup_ratio: Option<f64>,
-    pub speedup_confidence_interval: Option<f64>,
+
+    // Relative statistics (only when comparing to baseline)
+    pub relative_stats: Option<RelativeStats>,
 }
 
 /// Data structure representing aggregated statistics for a benchmark.
@@ -206,31 +214,31 @@ fn calculate_stats_for_measurements(
         });
     }
 
-    let sorted_measurements = measurements.to_vec();
-    let mean_val = mean(measurements);
-    let std_val = std_deviation(measurements);
-    let p25_val = percentile(&mut sorted_measurements.clone(), 25.0);
-    let p50_val = percentile(&mut sorted_measurements.clone(), 50.0);
-    let p75_val = percentile(&mut sorted_measurements.clone(), 75.0);
-    let min_val = *measurements.iter().min().unwrap() as f64;
-    let max_val = *measurements.iter().max().unwrap() as f64;
-    let cv_val = coefficient_of_variation(measurements);
+    let mean = mean(measurements);
+    let std = std_deviation(measurements);
+    let mut sorted_measurements = measurements.to_vec();
+    let p25 = percentile(&mut sorted_measurements, 25.0);
+    let median = percentile(&mut sorted_measurements, 50.0);
+    let p75 = percentile(&mut sorted_measurements, 75.0);
+    let min = *measurements.iter().min().unwrap() as f64;
+    let max = *measurements.iter().max().unwrap() as f64;
+    let cv = coefficient_of_variation(measurements);
 
-    // Calculate statistical significance if we have baseline data
-    let (
-        p25_delta_pct,
-        mean_delta_pct,
-        is_significant,
-        confidence_interval_half_width,
-        effect_size_mean_diff,
-        speedup_ratio,
-        speedup_confidence_interval,
-    ) = if let Some(baseline_measurements) = baseline_measurements {
-        let baseline_mean = mean(baseline_measurements);
-        let p25_delta = (p25_val - percentile(&mut baseline_measurements.to_vec(), 25.0))
-            / (p25_val + percentile(&mut baseline_measurements.to_vec(), 25.0))
-            * 100.0;
-        let mean_delta = (mean_val - baseline_mean) / (mean_val + baseline_mean) * 100.0;
+    // Calculate relative statistics if we have baseline data
+    let relative_stats = if let Some(baseline_measurements) = baseline_measurements {
+        let baseline_mean = crate::summarize::mean(baseline_measurements);
+        let mut baseline_sorted = baseline_measurements.to_vec();
+        let baseline_p25 = percentile(&mut baseline_sorted, 25.0);
+        let p25_delta_pct = (p25 - baseline_p25) / (p25 + baseline_p25) * 100.0;
+        let mean_delta_pct = (mean - baseline_mean) / (mean + baseline_mean) * 100.0;
+
+        // Always calculate basic relative metrics
+        let effect_size_mean_diff = mean - baseline_mean;
+        let speedup_ratio = if baseline_mean > 0.0 {
+            mean / baseline_mean
+        } else {
+            1.0
+        };
 
         // Use behrens-fisher for statistical significance
         let current_stats: behrens_fisher::Stats = measurements.iter().map(|&c| c as f64).collect();
@@ -242,52 +250,48 @@ fn calculate_stats_for_measurements(
             current_stats,
             baseline_stats,
         ) {
-            let mean_diff = mean_val - baseline_mean;
-            let is_sig = mean_diff.abs() > ci.abs();
-            let speedup = if baseline_mean > 0.0 {
-                mean_val / baseline_mean
-            } else {
-                1.0
-            };
-            let speedup_ci = if baseline_mean > 0.0 {
+            let is_significant = effect_size_mean_diff.abs() > ci.abs();
+            let speedup_confidence_interval = if baseline_mean > 0.0 {
                 ci / baseline_mean
             } else {
                 0.0
             };
 
-            (
-                p25_delta,
-                mean_delta,
-                is_sig,
-                Some(ci),
-                Some(mean_diff),
-                Some(speedup),
-                Some(speedup_ci),
-            )
+            Some(RelativeStats {
+                p25_delta_pct,
+                mean_delta_pct,
+                is_significant,
+                effect_size_mean_diff,
+                speedup_ratio,
+                confidence_interval_half_width: Some(ci),
+                speedup_confidence_interval: Some(speedup_confidence_interval),
+            })
         } else {
-            (p25_delta, mean_delta, false, None, None, None, None)
+            Some(RelativeStats {
+                p25_delta_pct,
+                mean_delta_pct,
+                is_significant: false,
+                effect_size_mean_diff,
+                speedup_ratio,
+                confidence_interval_half_width: None,
+                speedup_confidence_interval: None,
+            })
         }
     } else {
-        (0.0, 0.0, false, None, None, None, None)
+        None
     };
 
     Ok(BenchmarkStats {
-        cv: cv_val,
-        std: std_val,
-        mean: mean_val,
-        median: p50_val, // p50 consolidated into median
-        p25: p25_val,
-        p75: p75_val,
-        min: min_val,
-        max: max_val,
-        p25_delta_pct,
-        mean_delta_pct,
-        is_significant,
+        cv,
+        std,
+        mean,
+        median,
+        p25,
+        p75,
+        min,
+        max,
         significance_level,
-        confidence_interval_half_width,
-        effect_size_mean_diff,
-        speedup_ratio,
-        speedup_confidence_interval,
+        relative_stats,
     })
 }
 
@@ -307,6 +311,23 @@ mod tests {
         assert_eq!(stats.max, 5.0);
         assert_eq!(stats.median, 3.0); // changed from p50 to median
         assert!(stats.cv > 0.0);
+        assert!(stats.relative_stats.is_none()); // No baseline provided
+    }
+
+    #[test]
+    fn test_calculate_stats_with_baseline() {
+        let measurements = vec![5, 6, 7, 8, 9];
+        let baseline = vec![1, 2, 3, 4, 5];
+        let stats = calculate_stats_for_measurements(&measurements, Some(&baseline), 0.05)
+            .expect("Should calculate stats successfully");
+
+        assert_eq!(stats.mean, 7.0);
+        assert!(stats.relative_stats.is_some());
+
+        let rel = stats.relative_stats.unwrap();
+        assert!(rel.mean_delta_pct > 0.0); // Should be positive (measurements higher than baseline)
+        assert!(rel.speedup_ratio > 1.0); // Should be > 1 since measurements are higher than baseline
+        assert!(rel.effect_size_mean_diff > 0.0); // Should be positive mean difference
     }
 
     #[test]

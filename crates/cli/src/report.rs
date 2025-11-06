@@ -329,8 +329,11 @@ impl ReportCommand {
         env.add_filter("intfmt", |v: f64| format!("{:.0}", v));
         let template = env.get_template("report")?;
 
+        let confidence_pct = (1.0 - self.significance_level) * 100.0;
         let ctx = minijinja::context!(
             stats => stats,
+            significance_level => self.significance_level,
+            confidence_pct => confidence_pct,
         );
 
         let mut f = std::fs::File::create(&self.output_path)?;

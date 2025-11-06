@@ -148,8 +148,7 @@ pub fn calculate_benchmark_stats<'a>(
             .get(baseline_engine)
             .ok_or_else(|| {
                 AnalysisError::StatisticalError(format!(
-                    "Baseline engine '{}' not found in measurements for benchmark '{}'",
-                    baseline_engine, benchmark
+                    "Baseline engine '{baseline_engine}' not found in measurements for benchmark '{benchmark}'"
                 ))
             })?;
 

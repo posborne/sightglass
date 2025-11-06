@@ -326,7 +326,7 @@ impl ReportCommand {
         let mut env = minijinja::Environment::new();
         env.add_template("report", TEMPLATE)?;
         env.add_filter("floatfmt", |v: f64| format!("{v:0.2}"));
-        env.add_filter("intfmt", |v: f64| format!("{:.0}", v));
+        env.add_filter("intfmt", |v: f64| format!("{v:.0}"));
         let template = env.get_template("report")?;
 
         let confidence_pct = (1.0 - self.significance_level) * 100.0;

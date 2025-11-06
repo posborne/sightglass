@@ -186,7 +186,7 @@ impl BenchmarkCommand {
             let mut bench_api = unsafe { BenchApi::new(&lib)? };
 
             for wasm_file in &wasm_files {
-                log::info!("Using Wasm benchmark: {}", wasm_file);
+                log::info!("Using Wasm benchmark: {wasm_file}");
 
                 // Use the provided --working-dir, otherwise find the Wasm file's parent directory.
                 let working_dir = self.get_working_directory(&wasm_file)?;
@@ -506,10 +506,10 @@ fn display_summaries(measurements: &[Measurement<'_>], output_file: &mut dyn Wri
 // engine's dylib.
 pub fn check_engine_path(engine: &str) -> Result<PathBuf> {
     if Path::new(engine).exists() {
-        log::debug!("Using engine path: {}", engine);
+        log::debug!("Using engine path: {engine}");
         Ok(PathBuf::from(engine))
     } else {
-        Err(anyhow!("invalid path to engine: {}", engine))
+        Err(anyhow!("invalid path to engine: {engine}"))
     }
 }
 

@@ -24,23 +24,17 @@ pub struct ReportConfig {
     pub primary_event: String,
     pub target_phase: Phase,
     pub significance_level: f64,
-    pub baseline_engine: Option<String>,
+    pub baseline_engine: String,
 }
 
-impl Default for ReportConfig {
-    fn default() -> Self {
+impl ReportConfig {
+    pub fn new(baseline_engine: impl Into<String>) -> Self {
         Self {
             primary_event: "cycles".to_string(),
             target_phase: Phase::Execution,
             significance_level: 0.05,
-            baseline_engine: None,
+            baseline_engine: baseline_engine.into(),
         }
-    }
-}
-
-impl ReportConfig {
-    pub fn new() -> Self {
-        Self::default()
     }
 
     pub fn with_event(mut self, event: impl Into<String>) -> Self {
@@ -59,7 +53,7 @@ impl ReportConfig {
     }
 
     pub fn with_baseline_engine(mut self, engine: impl Into<String>) -> Self {
-        self.baseline_engine = Some(engine.into());
+        self.baseline_engine = engine.into();
         self
     }
 }
@@ -146,12 +140,8 @@ pub fn calculate_benchmark_stats<'a>(
     for (benchmark, engines) in grouped {
         let mut benchmark_results = HashMap::new();
 
-        // Determine baseline engine from config or use first available
-        let baseline_engine = config
-            .baseline_engine
-            .clone()
-            .or_else(|| engines.keys().next().cloned())
-            .unwrap_or_else(|| "baseline".to_string());
+        // Use the baseline engine from config
+        let baseline_engine = config.baseline_engine.clone();
 
         let baseline_counts = engines.get(&baseline_engine).cloned();
         let significance_level = config.significance_level;

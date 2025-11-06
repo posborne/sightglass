@@ -68,7 +68,7 @@
             <span>No highlighting = No significant difference</span>
         </div>
         <div>
-            Results show statistical significance based on <a href="#effect-size-methodology">effect size analysis</a> with 95% confidence intervals (α = 0.05).
+            Results show statistical significance based on <a href="#effect-size-methodology">effect size analysis</a> with {{ confidence_pct|floatfmt }}% confidence intervals (α = {{ significance_level }}).
             CV is the <a href="https://en.wikipedia.org/wiki/Coefficient_of_variation">Coefficient of Variation</a>, indicating measurement consistency.
         </div>
 
@@ -179,7 +179,7 @@
                                 <li>{{ engine }}: <span class="{{ class }}">{{ pct_slower }}% slower</span>
                             {% endif %}
                             {% if rel.confidence_interval_half_width %}
-                                (95% confident with ±{{ rel.confidence_interval_half_width|floatfmt }} cycles margin)
+                                ({{ confidence_pct|floatfmt }}% confident with ±{{ rel.confidence_interval_half_width|floatfmt }} cycles margin)
                             {% endif %}
                             (CV: {{ pstats.cv|floatfmt }}%)</li>
                         {% else %}

@@ -1992,6 +1992,7 @@ dependencies = [
  "behrens-fisher",
  "serde",
  "sightglass-data",
+ "thiserror",
 ]
 
 [[package]]

@@ -278,7 +278,7 @@ impl ReportCommand {
         };
 
         // Use the new calculate_benchmark_stats function with ReportConfig
-        let benchmark_stats = calculate_benchmark_stats(measurements, &config);
+        let benchmark_stats = calculate_benchmark_stats(measurements, &config)?;
 
         // Check if we found any matching data
         if benchmark_stats.is_empty() {

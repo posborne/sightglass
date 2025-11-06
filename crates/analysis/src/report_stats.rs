@@ -1,6 +1,22 @@
 use crate::summarize::{coefficient_of_variation, mean, percentile, std_deviation};
 use sightglass_data::{extract_benchmark_name, Measurement, Phase};
 use std::collections::HashMap;
+use thiserror::Error;
+
+/// Errors that can occur during benchmark analysis
+#[derive(Debug, Error)]
+pub enum AnalysisError {
+    #[error("No measurements available for analysis")]
+    InsufficientData,
+    #[error("Insufficient sample size: need at least {required} samples, got {actual}")]
+    InsufficientSampleSize { required: usize, actual: usize },
+    #[error("No measurements found for event '{event}' in phase '{phase:?}'")]
+    NoMatchingMeasurements { phase: Phase, event: String },
+    #[error("Invalid significance level: {level} (must be between 0 and 1)")]
+    InvalidSignificanceLevel { level: f64 },
+    #[error("Statistical analysis failed: {0}")]
+    StatisticalError(String),
+}
 
 /// Configuration for benchmark report generation
 #[derive(Debug, Clone)]
@@ -82,7 +98,12 @@ pub struct BenchmarkData {
 pub fn calculate_benchmark_stats<'a>(
     measurements: &[Measurement<'a>],
     config: &ReportConfig,
-) -> HashMap<String, HashMap<String, BenchmarkStats>> {
+) -> Result<HashMap<String, HashMap<String, BenchmarkStats>>, AnalysisError> {
+    // Early validation
+    if measurements.is_empty() {
+        return Err(AnalysisError::InsufficientData);
+    }
+
     let mut results: HashMap<String, HashMap<String, BenchmarkStats>> = HashMap::new();
 
     // Group measurements by benchmark and prefix
@@ -105,6 +126,14 @@ pub fn calculate_benchmark_stats<'a>(
             .push(measurement.count);
     }
 
+    // Check if we found any matching measurements
+    if grouped.is_empty() {
+        return Err(AnalysisError::NoMatchingMeasurements {
+            phase: config.target_phase,
+            event: config.primary_event.clone(),
+        });
+    }
+
     // Calculate statistics for each group
     for (benchmark, prefixes) in grouped {
         let mut benchmark_results = HashMap::new();
@@ -121,14 +150,13 @@ pub fn calculate_benchmark_stats<'a>(
 
         for (prefix, counts) in prefixes {
             let stats = if prefix == baseline_prefix {
-                calculate_stats_for_counts(&counts, None, significance_level, None)
+                calculate_stats_for_measurements(&counts, None, significance_level)?
             } else {
-                calculate_stats_for_counts(
+                calculate_stats_for_measurements(
                     &counts,
                     baseline_counts.as_deref(),
                     significance_level,
-                    None,
-                )
+                )?
             };
             benchmark_results.insert(prefix, stats);
         }
@@ -136,7 +164,7 @@ pub fn calculate_benchmark_stats<'a>(
         results.insert(benchmark, benchmark_results);
     }
 
-    results
+    Ok(results)
 }
 
 
@@ -147,43 +175,46 @@ fn extract_prefix_from_measurement<'a>(measurement: &Measurement<'a>) -> String 
     measurement.engine.to_string()
 }
 
-/// Calculate statistics for a group of count measurements.
-fn calculate_stats_for_counts(
-    counts: &[u64],
-    baseline_counts: Option<&[u64]>,
+/// Calculate statistics for a group of measurements.
+fn calculate_stats_for_measurements(
+    measurements: &[u64],
+    baseline_measurements: Option<&[u64]>,
     significance_level: f64,
-    _effect_size_data: Option<&sightglass_data::EffectSize>,
-) -> BenchmarkStats {
-    if counts.is_empty() {
-        return BenchmarkStats {
-            cv: 0.0,
-            std: 0.0,
-            mean: 0.0,
-            median: 0.0, // p50 consolidated into median
-            p25: 0.0,
-            p75: 0.0,
-            min: 0.0,
-            max: 0.0,
-            p25_delta_pct: 0.0,
-            mean_delta_pct: 0.0,
-            is_significant: false,
-            significance_level: 0.05,
-            confidence_interval_half_width: None,
-            effect_size_mean_diff: None,
-            speedup_ratio: None,
-            speedup_confidence_interval: None,
-        };
+) -> Result<BenchmarkStats, AnalysisError> {
+    // Validate minimum sample size for measurements
+    if measurements.len() < 3 {
+        return Err(AnalysisError::InsufficientSampleSize {
+            required: 3,
+            actual: measurements.len(),
+        });
     }
 
-    let sorted_counts = counts.to_vec();
-    let mean_val = mean(counts);
-    let std_val = std_deviation(counts);
-    let p25_val = percentile(&mut sorted_counts.clone(), 25.0);
-    let p50_val = percentile(&mut sorted_counts.clone(), 50.0);
-    let p75_val = percentile(&mut sorted_counts.clone(), 75.0);
-    let min_val = *counts.iter().min().unwrap() as f64;
-    let max_val = *counts.iter().max().unwrap() as f64;
-    let cv_val = coefficient_of_variation(counts);
+    // Validate baseline sample size if provided
+    if let Some(baseline) = baseline_measurements {
+        if baseline.len() < 3 {
+            return Err(AnalysisError::InsufficientSampleSize {
+                required: 3,
+                actual: baseline.len(),
+            });
+        }
+    }
+
+    // Validate significance level
+    if !(0.0..=1.0).contains(&significance_level) {
+        return Err(AnalysisError::InvalidSignificanceLevel {
+            level: significance_level,
+        });
+    }
+
+    let sorted_measurements = measurements.to_vec();
+    let mean_val = mean(measurements);
+    let std_val = std_deviation(measurements);
+    let p25_val = percentile(&mut sorted_measurements.clone(), 25.0);
+    let p50_val = percentile(&mut sorted_measurements.clone(), 50.0);
+    let p75_val = percentile(&mut sorted_measurements.clone(), 75.0);
+    let min_val = *measurements.iter().min().unwrap() as f64;
+    let max_val = *measurements.iter().max().unwrap() as f64;
+    let cv_val = coefficient_of_variation(measurements);
 
     // Calculate statistical significance if we have baseline data
     let (
@@ -194,17 +225,17 @@ fn calculate_stats_for_counts(
         effect_size_mean_diff,
         speedup_ratio,
         speedup_confidence_interval,
-    ) = if let Some(baseline_counts) = baseline_counts {
-        let baseline_mean = mean(baseline_counts);
-        let p25_delta = (p25_val - percentile(&mut baseline_counts.to_vec(), 25.0))
-            / (p25_val + percentile(&mut baseline_counts.to_vec(), 25.0))
+    ) = if let Some(baseline_measurements) = baseline_measurements {
+        let baseline_mean = mean(baseline_measurements);
+        let p25_delta = (p25_val - percentile(&mut baseline_measurements.to_vec(), 25.0))
+            / (p25_val + percentile(&mut baseline_measurements.to_vec(), 25.0))
             * 100.0;
         let mean_delta = (mean_val - baseline_mean) / (mean_val + baseline_mean) * 100.0;
 
         // Use behrens-fisher for statistical significance
-        let current_stats: behrens_fisher::Stats = counts.iter().map(|&c| c as f64).collect();
+        let current_stats: behrens_fisher::Stats = measurements.iter().map(|&c| c as f64).collect();
         let baseline_stats: behrens_fisher::Stats =
-            baseline_counts.iter().map(|&c| c as f64).collect();
+            baseline_measurements.iter().map(|&c| c as f64).collect();
 
         if let Ok(ci) = behrens_fisher::confidence_interval(
             1.0 - significance_level,
@@ -240,7 +271,7 @@ fn calculate_stats_for_counts(
         (0.0, 0.0, false, None, None, None, None)
     };
 
-    BenchmarkStats {
+    Ok(BenchmarkStats {
         cv: cv_val,
         std: std_val,
         mean: mean_val,
@@ -257,7 +288,7 @@ fn calculate_stats_for_counts(
         effect_size_mean_diff,
         speedup_ratio,
         speedup_confidence_interval,
-    }
+    })
 }
 
 #[cfg(test)]
@@ -266,14 +297,29 @@ mod tests {
 
 
     #[test]
-    fn test_calculate_stats_for_counts() {
-        let counts = vec![1, 2, 3, 4, 5];
-        let stats = calculate_stats_for_counts(&counts, None, 0.05, None);
+    fn test_calculate_stats_for_measurements() {
+        let measurements = vec![1, 2, 3, 4, 5];
+        let stats = calculate_stats_for_measurements(&measurements, None, 0.05)
+            .expect("Should calculate stats successfully");
 
         assert_eq!(stats.mean, 3.0);
         assert_eq!(stats.min, 1.0);
         assert_eq!(stats.max, 5.0);
         assert_eq!(stats.median, 3.0); // changed from p50 to median
         assert!(stats.cv > 0.0);
+    }
+
+    #[test]
+    fn test_insufficient_sample_size() {
+        let measurements = vec![1, 2];
+        let result = calculate_stats_for_measurements(&measurements, None, 0.05);
+        assert!(matches!(result, Err(AnalysisError::InsufficientSampleSize { required: 3, actual: 2 })));
+    }
+
+    #[test]
+    fn test_invalid_significance_level() {
+        let measurements = vec![1, 2, 3, 4, 5];
+        let result = calculate_stats_for_measurements(&measurements, None, 1.5);
+        assert!(matches!(result, Err(AnalysisError::InvalidSignificanceLevel { level }) if level == 1.5));
     }
 }

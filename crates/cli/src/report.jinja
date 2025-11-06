@@ -95,10 +95,10 @@
                 <tr>
                     <th scope="col">Benchmark</th>
                     <th scope="col">CV%</th>
-                    <th scope="col">{{ stats.baseline_prefix }} (baseline)</th>
-                    {% for prefix in stats.benchmarks[0].stats_by_prefix %}
-                        {% if prefix != stats.baseline_prefix %}
-                        <th scope="col">{{ prefix }}</th>
+                    <th scope="col">{{ stats.baseline_engine }} (baseline)</th>
+                    {% for engine in stats.benchmarks[0].stats_by_engine %}
+                        {% if engine != stats.baseline_engine %}
+                        <th scope="col">{{ engine }}</th>
                         {% endif %}
                     {% endfor %}
                 </tr>
@@ -108,7 +108,7 @@
                 {% set bstats = benchmark.baseline_stats %}
                 {% set has_significant = namespace(value=false) %}
                 {% set best_confidence = namespace(value=1.0) %}
-                {% for prefix, pstats in benchmark.stats_by_prefix|items %}
+                {% for engine, pstats in benchmark.stats_by_engine|items %}
                     {% if pstats.relative_stats and pstats.relative_stats.is_significant %}
                         {% set has_significant.value = true %}
                         {% if pstats.significance_level < best_confidence.value %}
@@ -122,13 +122,13 @@
                     data-benchmark-name="{{ benchmark.name }}">
                     <td><a href="#{{ benchmark.name }}">{{ benchmark.name }}</a></td>
                     {# CV% column #}
-                    {% set bstats = benchmark.stats_by_prefix[stats.baseline_prefix] %}
+                    {% set bstats = benchmark.stats_by_engine[stats.baseline_engine] %}
                     {% set cv_class = "inconsistent" if bstats.cv > 5 else "" %}
                     <td class="{{ cv_class }}">{{ bstats.cv|floatfmt }}%</td>
                     {# Baseline column without CV #}
                     <td class="cycle-count">{{ bstats.p25|intfmt }}</td>
                     {# Then show other engines #}
-                    {% for prefix, pstats in benchmark.stats_by_prefix|items %}
+                    {% for engine, pstats in benchmark.stats_by_engine|items %}
                         {% if pstats.relative_stats %}
                         {% set rel = pstats.relative_stats %}
                         {% set class = "slower" if rel.is_significant and rel.speedup_ratio > 1 else "faster" if rel.is_significant and rel.speedup_ratio < 1 else "" %}
@@ -154,7 +154,7 @@
             {% for benchmark in stats.benchmarks %}
             {% set bstats = benchmark.baseline_stats %}
             {% set has_significant = namespace(value=false) %}
-            {% for prefix, pstats in benchmark.stats_by_prefix|items %}
+            {% for engine, pstats in benchmark.stats_by_engine|items %}
                 {% if pstats.relative_stats and pstats.relative_stats.is_significant %}
                     {% set has_significant.value = true %}
                 {% endif %}
@@ -166,24 +166,24 @@
                 <h2 id="{{benchmark.name}}">{{ benchmark.name }}</h2>
             <ul>
                 <li><strong>Baseline:</strong> <span class="cycle-count">{{ bstats.mean|intfmt }}</span> cycles (<span {% if bstats.cv > 5 %}class="inconsistent"{% endif %}>CV: {{ bstats.cv|floatfmt }}%</span>)</li>
-                {% for prefix, pstats in benchmark.stats_by_prefix|items %}
+                {% for engine, pstats in benchmark.stats_by_engine|items %}
                     {% if pstats.relative_stats %}
                         {% set rel = pstats.relative_stats %}
                         {% if rel.is_significant %}
                             {% set class = "slower" if rel.speedup_ratio > 1 else "faster" %}
                             {% if rel.speedup_ratio < 1 %}
                                 {% set pct_faster = ((1 - rel.speedup_ratio) * 100)|floatfmt %}
-                                <li>{{ prefix }}: <span class="{{ class }}">{{ pct_faster }}% faster</span>
+                                <li>{{ engine }}: <span class="{{ class }}">{{ pct_faster }}% faster</span>
                             {% else %}
                                 {% set pct_slower = ((rel.speedup_ratio - 1) * 100)|floatfmt %}
-                                <li>{{ prefix }}: <span class="{{ class }}">{{ pct_slower }}% slower</span>
+                                <li>{{ engine }}: <span class="{{ class }}">{{ pct_slower }}% slower</span>
                             {% endif %}
                             {% if rel.confidence_interval_half_width %}
                                 (95% confident with ±{{ rel.confidence_interval_half_width|floatfmt }} cycles margin)
                             {% endif %}
                             (CV: {{ pstats.cv|floatfmt }}%)</li>
                         {% else %}
-                            <li>{{ prefix }}: No significant difference ({{ rel.p25_delta_pct|floatfmt }}%) (CV: {{ pstats.cv|floatfmt }}%)</li>
+                            <li>{{ engine }}: No significant difference ({{ rel.p25_delta_pct|floatfmt }}%) (CV: {{ pstats.cv|floatfmt }}%)</li>
                         {% endif %}
                     {% endif %}
                 {% endfor %}

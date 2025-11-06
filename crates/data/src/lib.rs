@@ -269,10 +269,7 @@ mod tests {
         assert_eq!(extract_benchmark_name("./benchmarks/simple.wasm"), "simple");
 
         // Nested paths with .wasm extension
-        assert_eq!(
-            extract_benchmark_name("benchmarks/foo/bar.wasm"),
-            "foo/bar"
-        );
+        assert_eq!(extract_benchmark_name("benchmarks/foo/bar.wasm"), "foo/bar");
         assert_eq!(
             extract_benchmark_name("./benchmarks/nested/path/test.wasm"),
             "nested/path/test"

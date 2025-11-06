@@ -24,7 +24,7 @@ pub struct ReportConfig {
     pub primary_event: String,
     pub target_phase: Phase,
     pub significance_level: f64,
-    pub baseline_prefix: Option<String>,
+    pub baseline_engine: Option<String>,
 }
 
 impl Default for ReportConfig {
@@ -33,7 +33,7 @@ impl Default for ReportConfig {
             primary_event: "cycles".to_string(),
             target_phase: Phase::Execution,
             significance_level: 0.05,
-            baseline_prefix: None,
+            baseline_engine: None,
         }
     }
 }
@@ -58,8 +58,8 @@ impl ReportConfig {
         self
     }
 
-    pub fn with_baseline_prefix(mut self, prefix: impl Into<String>) -> Self {
-        self.baseline_prefix = Some(prefix.into());
+    pub fn with_baseline_engine(mut self, engine: impl Into<String>) -> Self {
+        self.baseline_engine = Some(engine.into());
         self
     }
 }
@@ -98,11 +98,11 @@ pub struct BenchmarkStats {
 #[derive(Debug)]
 pub struct BenchmarkData {
     pub name: String,
-    pub stats_by_prefix: HashMap<String, BenchmarkStats>,
+    pub stats_by_engine: HashMap<String, BenchmarkStats>,
     pub baseline_stats: BenchmarkStats,
 }
 
-/// Calculate statistics for all benchmarks grouped by prefix.
+/// Calculate statistics for all benchmarks grouped by engine.
 pub fn calculate_benchmark_stats<'a>(
     measurements: &[Measurement<'a>],
     config: &ReportConfig,
@@ -114,7 +114,7 @@ pub fn calculate_benchmark_stats<'a>(
 
     let mut results: HashMap<String, HashMap<String, BenchmarkStats>> = HashMap::new();
 
-    // Group measurements by benchmark and prefix
+    // Group measurements by benchmark and engine
     let mut grouped: HashMap<String, HashMap<String, Vec<u64>>> = HashMap::new();
 
     for measurement in measurements {
@@ -124,12 +124,12 @@ pub fn calculate_benchmark_stats<'a>(
         }
 
         let benchmark = extract_benchmark_name(&measurement.wasm);
-        let prefix = extract_prefix_from_measurement(measurement);
+        let engine = extract_engine_name(measurement);
 
         grouped
             .entry(benchmark)
             .or_default()
-            .entry(prefix)
+            .entry(engine)
             .or_default()
             .push(measurement.count);
     }
@@ -143,21 +143,21 @@ pub fn calculate_benchmark_stats<'a>(
     }
 
     // Calculate statistics for each group
-    for (benchmark, prefixes) in grouped {
+    for (benchmark, engines) in grouped {
         let mut benchmark_results = HashMap::new();
 
-        // Determine baseline prefix from config or use first available
-        let baseline_prefix = config
-            .baseline_prefix
+        // Determine baseline engine from config or use first available
+        let baseline_engine = config
+            .baseline_engine
             .clone()
-            .or_else(|| prefixes.keys().next().cloned())
+            .or_else(|| engines.keys().next().cloned())
             .unwrap_or_else(|| "baseline".to_string());
 
-        let baseline_counts = prefixes.get(&baseline_prefix).cloned();
+        let baseline_counts = engines.get(&baseline_engine).cloned();
         let significance_level = config.significance_level;
 
-        for (prefix, counts) in prefixes {
-            let stats = if prefix == baseline_prefix {
+        for (engine, counts) in engines {
+            let stats = if engine == baseline_engine {
                 calculate_stats_for_measurements(&counts, None, significance_level)?
             } else {
                 calculate_stats_for_measurements(
@@ -166,7 +166,7 @@ pub fn calculate_benchmark_stats<'a>(
                     significance_level,
                 )?
             };
-            benchmark_results.insert(prefix, stats);
+            benchmark_results.insert(engine, stats);
         }
 
         results.insert(benchmark, benchmark_results);
@@ -175,11 +175,8 @@ pub fn calculate_benchmark_stats<'a>(
     Ok(results)
 }
 
-
-/// Extract prefix from measurement (could be enhanced to use actual prefix logic).
-fn extract_prefix_from_measurement<'a>(measurement: &Measurement<'a>) -> String {
-    // This would need to be implemented based on how prefixes are determined
-    // For now, using engine name as a placeholder
+/// Extract engine name from measurement.
+fn extract_engine_name<'a>(measurement: &Measurement<'a>) -> String {
     measurement.engine.to_string()
 }
 
@@ -299,7 +296,6 @@ fn calculate_stats_for_measurements(
 mod tests {
     use super::*;
 
-
     #[test]
     fn test_calculate_stats_for_measurements() {
         let measurements = vec![1, 2, 3, 4, 5];
@@ -334,13 +330,21 @@ mod tests {
     fn test_insufficient_sample_size() {
         let measurements = vec![1, 2];
         let result = calculate_stats_for_measurements(&measurements, None, 0.05);
-        assert!(matches!(result, Err(AnalysisError::InsufficientSampleSize { required: 3, actual: 2 })));
+        assert!(matches!(
+            result,
+            Err(AnalysisError::InsufficientSampleSize {
+                required: 3,
+                actual: 2
+            })
+        ));
     }
 
     #[test]
     fn test_invalid_significance_level() {
         let measurements = vec![1, 2, 3, 4, 5];
         let result = calculate_stats_for_measurements(&measurements, None, 1.5);
-        assert!(matches!(result, Err(AnalysisError::InvalidSignificanceLevel { level }) if level == 1.5));
+        assert!(
+            matches!(result, Err(AnalysisError::InvalidSignificanceLevel { level }) if level == 1.5)
+        );
     }
 }

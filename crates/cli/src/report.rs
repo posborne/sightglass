@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
     fs::File,
     hash::{Hash, Hasher},
-    io::{BufRead, BufReader, Write},
+    io::{BufReader, Write},
     path::{Path, PathBuf},
 };
 
@@ -63,29 +63,15 @@ struct Chart {
 struct BenchmarkData {
     name: String,
     chart: Chart,
-    stats_by_prefix: HashMap<String, BenchmarkStats>,
+    stats_by_engine: HashMap<String, BenchmarkStats>,
     baseline_stats: BenchmarkStats,
 }
 
 #[derive(Debug, Serialize)]
 struct SightglassStats {
-    baseline_prefix: String,
+    baseline_engine: String,
     benchmarks: Vec<BenchmarkData>,
 }
-
-fn prefix_from_path(path: impl AsRef<Path>) -> String {
-    path.as_ref()
-        .file_stem()
-        .unwrap_or_else(|| path.as_ref().as_os_str())
-        .to_string_lossy()
-        .to_string()
-}
-
-fn extract_prefix_from_engine(engine: &str) -> String {
-    // Since we now use the filename as the engine name directly, just return it
-    engine.to_string()
-}
-
 
 fn get_available_events(measurements: &[Measurement]) -> String {
     let mut events: Vec<&str> = measurements
@@ -123,60 +109,11 @@ fn parse_input(
         })
         .unwrap_or(Format::Json);
 
-    let prefix = prefix_from_path(path.as_ref());
     let file = File::open(&path)?;
+    let reader = BufReader::new(file);
+    let measurements: Vec<Measurement> = format.read(reader)?;
 
-    let measurements: Vec<Measurement> = match format {
-        Format::Json => {
-            let reader = BufReader::new(file);
-
-            // First try to parse as a JSON array
-            if let Ok(measurements) = serde_json::from_reader::<_, Vec<Measurement>>(reader) {
-                measurements
-            } else {
-                // Fall back to JSONL format (one JSON object per line)
-                // Need to reopen the file since the reader was consumed
-                let file_retry = File::open(path.as_ref())?;
-                let reader_retry = BufReader::new(file_retry);
-                let mut measurements = Vec::new();
-                for line in BufRead::lines(reader_retry) {
-                    let line = line?;
-                    if let Ok(measurement) = serde_json::from_str::<Measurement>(&line) {
-                        measurements.push(measurement);
-                    }
-                }
-                measurements
-            }
-        }
-        Format::Csv { .. } => {
-            let mut reader = csv::Reader::from_reader(file);
-            let mut measurements = Vec::new();
-            for result in reader.deserialize() {
-                let measurement: Measurement = result?;
-                measurements.push(measurement);
-            }
-            measurements
-        }
-    };
-
-    // Convert to owned strings for 'static lifetime and use prefix as engine name
-    let filtered_measurements: Vec<Measurement<'static>> = measurements
-        .into_iter()
-        .map(|m| {
-            Measurement {
-                arch: std::borrow::Cow::Owned(m.arch.into_owned()),
-                engine: std::borrow::Cow::Owned(prefix.clone()),
-                wasm: std::borrow::Cow::Owned(m.wasm.into_owned()),
-                process: m.process,
-                iteration: m.iteration,
-                phase: m.phase,
-                event: std::borrow::Cow::Owned(m.event.into_owned()),
-                count: m.count,
-            }
-        })
-        .collect();
-
-    Ok(filtered_measurements)
+    Ok(measurements)
 }
 
 impl ReportCommand {
@@ -192,7 +129,7 @@ impl ReportCommand {
         #[derive(Debug, serde::Serialize)]
         struct ChartDataPoint {
             count: u64,
-            prefix: String,
+            engine: String,
             p25_delta_pct: f64,
         }
 
@@ -200,7 +137,7 @@ impl ReportCommand {
             .iter()
             .map(|m| ChartDataPoint {
                 count: m.count,
-                prefix: extract_prefix_from_engine(&m.engine),
+                engine: m.engine.to_string(),
                 p25_delta_pct: (100.0 * (m.count as f64 - bstats.p25)
                     / ((m.count as f64 + bstats.p25) / 2.0)),
             })
@@ -216,12 +153,12 @@ impl ReportCommand {
                         .axis(AxisBuilder::default().title("cycles").build()?)
                         .build()?)
                     .y(YClassBuilder::default()
-                        .field("prefix")
+                        .field("engine")
                         .position_def_type(vl::Type::Nominal)
                         .build()?)
                     .color(
                         ColorClassBuilder::default()
-                            .field("prefix")
+                            .field("engine")
                             .legend(LegendBuilder::default().title("Engine").build()?)
                             .build()?,
                     )
@@ -243,13 +180,13 @@ impl ReportCommand {
                         )
                         .build()?)
                     .y(YClassBuilder::default()
-                        .field("prefix")
+                        .field("engine")
                         .position_def_type(vl::Type::Nominal)
                         .build()?)
                     .color(
                         ColorClassBuilder::default()
-                            .field("prefix")
-                            .legend(LegendBuilder::default().title("Prefix").build()?)
+                            .field("engine")
+                            .legend(LegendBuilder::default().title("Engine").build()?)
                             .build()?,
                     )
                     .build()?,
@@ -272,7 +209,7 @@ impl ReportCommand {
             .with_significance_level(self.significance_level);
 
         let config = if let Some(ref baseline) = self.baseline_engine {
-            config.with_baseline_prefix(baseline)
+            config.with_baseline_engine(baseline)
         } else {
             config
         };
@@ -298,32 +235,31 @@ impl ReportCommand {
 
         let mut benchmarks_data: Vec<BenchmarkData> = Vec::new();
 
-        // Determine baseline prefix for display
-        let first_available_prefix = benchmark_stats
+        // Determine baseline engine for display
+        let first_available_engine = benchmark_stats
             .values()
             .next()
-            .and_then(|stats| stats.keys().next())
-            .map(|s| s.clone());
+            .and_then(|stats| stats.keys().next()).cloned();
 
-        let baseline_prefix_for_display = config
-            .baseline_prefix
+        let baseline_engine_for_display = config
+            .baseline_engine
             .clone()
-            .or(first_available_prefix)
+            .or(first_available_engine)
             .unwrap_or_else(|| "baseline".to_string());
 
         // Convert the calculated benchmark stats to our display format
-        for (benchmark_name, stats_by_prefix) in benchmark_stats {
-            // Get baseline prefix from config or use first available
-            let baseline_prefix = config
-                .baseline_prefix
+        for (benchmark_name, stats_by_engine) in benchmark_stats {
+            // Get baseline engine from config or use first available
+            let baseline_engine = config
+                .baseline_engine
                 .as_deref()
-                .or_else(|| stats_by_prefix.keys().next().map(|s| s.as_str()))
+                .or_else(|| stats_by_engine.keys().next().map(|s| s.as_str()))
                 .unwrap_or("baseline");
 
-            let baseline_stats = stats_by_prefix
-                .get(baseline_prefix)
+            let baseline_stats = stats_by_engine
+                .get(baseline_engine)
                 .cloned()
-                .unwrap_or_else(|| stats_by_prefix.values().next().unwrap().clone());
+                .unwrap_or_else(|| stats_by_engine.values().next().unwrap().clone());
 
             // Get measurements for this benchmark that match our config filters
             let benchmark_measurements: Vec<&Measurement> = measurements
@@ -349,7 +285,7 @@ impl ReportCommand {
                     json: chart_json,
                     id,
                 },
-                stats_by_prefix,
+                stats_by_engine,
                 baseline_stats,
             });
         }
@@ -358,7 +294,7 @@ impl ReportCommand {
         benchmarks_data.sort_by(|a, b| a.name.cmp(&b.name));
 
         Ok(SightglassStats {
-            baseline_prefix: baseline_prefix_for_display,
+            baseline_engine: baseline_engine_for_display,
             benchmarks: benchmarks_data,
         })
     }

@@ -95,6 +95,15 @@ fn get_available_phases(measurements: &[Measurement]) -> String {
     phases.join(", ")
 }
 
+fn create_display_engine_name(measurement: &Measurement) -> String {
+    match &measurement.engine_flags {
+        Some(flags) if !flags.is_empty() => {
+            format!("{} [{}]", measurement.engine, flags)
+        }
+        _ => measurement.engine.to_string()
+    }
+}
+
 fn parse_input(
     format: Option<Format>,
     path: impl AsRef<Path>,
@@ -137,7 +146,7 @@ impl ReportCommand {
             .iter()
             .map(|m| ChartDataPoint {
                 count: m.count,
-                engine: m.engine.to_string(),
+                engine: create_display_engine_name(m),
                 p25_delta_pct: (100.0 * (m.count as f64 - bstats.p25)
                     / ((m.count as f64 + bstats.p25) / 2.0)),
             })

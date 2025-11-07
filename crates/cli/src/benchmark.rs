@@ -25,7 +25,7 @@ pub struct BenchmarkCommand {
     /// The path to the file(s) to benchmark. This accepts one or more:
     ///
     /// - `*.wasm` files: individual benchmarks that meet the requirements
-    /// outlined in `benchmarks/README.md`
+    ///   outlined in `benchmarks/README.md`
     ///
     /// - `*.suite` files: a file containing a newline-delimited list of
     ///   benchmarks to execute. A `*.suite` file may contain `#`-prefixed line
@@ -56,6 +56,14 @@ pub struct BenchmarkCommand {
     /// How many processes should we use for each Wasm benchmark?
     #[structopt(long = "processes", default_value = "10", value_name = "PROCESSES")]
     processes: usize,
+
+    /// Override the "engine" name; this is useful if running experiments that might
+    /// not have a differentiating engine name (e.g. if customizing the flags).
+    ///
+    /// If multiple engines are provided, the order of names provided here should
+    /// match the order of the engines specified.
+    #[structopt(long = "name", short = "n")]
+    names: Option<Vec<String>>,
 
     /// How many times should we run a benchmark in a single process?
     #[structopt(
@@ -166,21 +174,26 @@ impl BenchmarkCommand {
             .collect();
         let mut all_measurements = vec![];
 
-        for engine in &self.engines {
+        for (i, engine) in self.engines.iter().enumerate() {
             let engine_path = check_engine_path(engine)?;
+            let engine_name = self
+                .names
+                .as_ref()
+                .and_then(|names| names.get(i).map(|s| s.as_str()))
+                .unwrap_or(engine);
             log::info!("Using benchmark engine: {}", engine_path.display());
             let lib = unsafe { libloading::Library::new(&engine_path)? };
             let mut bench_api = unsafe { BenchApi::new(&lib)? };
 
             for wasm_file in &wasm_files {
-                log::info!("Using Wasm benchmark: {}", wasm_file);
+                log::info!("Using Wasm benchmark: {wasm_file}");
 
                 // Use the provided --working-dir, otherwise find the Wasm file's parent directory.
                 let working_dir = self.get_working_directory(&wasm_file)?;
                 log::info!("Using working directory: {}", working_dir.display());
 
                 // Read the Wasm bytes.
-                let bytes = fs::read(&wasm_file).context("Attempting to read Wasm bytes")?;
+                let bytes = fs::read(wasm_file).context("Attempting to read Wasm bytes")?;
                 log::debug!("Wasm benchmark size: {} bytes", bytes.len());
 
                 let wasm_hash = {
@@ -196,7 +209,12 @@ impl BenchmarkCommand {
                 let stderr = Path::new(&stderr);
                 let stdin = None;
 
-                let mut measurements = Measurements::new(this_arch(), engine, wasm_file);
+                let mut measurements = Measurements::with_flags(
+                    this_arch(),
+                    engine_name,
+                    wasm_file,
+                    self.engine_flags.as_deref(),
+                );
                 let mut measure = if self.measures.len() <= 1 {
                     let measure = self.measures.first().unwrap_or(&MeasureType::Cycles);
                     measure.build()
@@ -296,11 +314,11 @@ impl BenchmarkCommand {
             .with_context(|| "expected the benchmark file to have an extension")?
             .to_str()
             .with_context(|| "expected the benchmark file to have a printable name")?;
-        let mut stdout_expected = wasm_file_dir.join(format!("{}.stdout.expected", benchmark_name));
+        let mut stdout_expected = wasm_file_dir.join(format!("{benchmark_name}.stdout.expected"));
         if !stdout_expected.exists() {
             stdout_expected = wasm_file_dir.join("default.stdout.expected");
         }
-        let mut stderr_expected = wasm_file_dir.join(format!("{}.stderr.expected", benchmark_name));
+        let mut stderr_expected = wasm_file_dir.join(format!("{benchmark_name}.stderr.expected"));
         if !stderr_expected.exists() {
             stderr_expected = wasm_file_dir.join("default.stderr.expected");
         }
@@ -365,8 +383,7 @@ impl BenchmarkCommand {
                 .args(
                     self.measures
                         .iter()
-                        .map(|m| ["--measure".to_string(), m.to_string()])
-                        .flatten(),
+                        .flat_map(|m| ["--measure".to_string(), m.to_string()]),
                 )
                 .arg("--raw")
                 .arg("--output-format")
@@ -387,7 +404,7 @@ impl BenchmarkCommand {
             }
 
             if let Some(flags) = &self.engine_flags {
-                command.arg(format!("--engine-flags={}", flags));
+                command.arg(format!("--engine-flags={flags}"));
             }
 
             command.arg("--").arg(&wasm);
@@ -398,7 +415,10 @@ impl BenchmarkCommand {
 
             anyhow::ensure!(
                 output.status.success(),
-                "benchmark subprocess did not exit successfully"
+                "benchmark subprocess did not exit successfully: {}\nstderr: {}\nstdout: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr),
+                String::from_utf8_lossy(&output.stdout)
             );
 
             eprintln!(".");
@@ -486,10 +506,10 @@ fn display_summaries(measurements: &[Measurement<'_>], output_file: &mut dyn Wri
 // engine's dylib.
 pub fn check_engine_path(engine: &str) -> Result<PathBuf> {
     if Path::new(engine).exists() {
-        log::debug!("Using engine path: {}", engine);
+        log::debug!("Using engine path: {engine}");
         Ok(PathBuf::from(engine))
     } else {
-        Err(anyhow!("invalid path to engine: {}", engine))
+        Err(anyhow!("invalid path to engine: {engine}"))
     }
 }
 
@@ -497,7 +517,7 @@ pub fn check_engine_path(engine: &str) -> Result<PathBuf> {
 /// `stderr`) is the same as the `expected` output.
 fn compare_output_file(wasm: &Path, actual: &Path, expected: &Path) -> Result<()> {
     if expected.exists() {
-        let expected_data = std::fs::read_to_string(&expected)
+        let expected_data = std::fs::read_to_string(expected)
             .with_context(|| format!("failed to read `{}`", expected.display()))?;
         let stdout_actual_data = std::fs::read_to_string(actual)
             .with_context(|| format!("failed to read `{}`", actual.display()))?;
@@ -537,7 +557,7 @@ mod tests {
         display_summaries(&measurements, &mut output)?;
 
         let actual = String::from_utf8(output)?;
-        eprintln!("=== Actual ===\n{}", actual);
+        eprintln!("=== Actual ===\n{actual}");
 
         let expected = r#"
 compilation
@@ -571,7 +591,7 @@ execution
       [3556483 3729210.70 4349778] /tmp/old_backend_2.so
       [3639688 4025470.30 5782529] /tmp/old_backend_3.so
 "#;
-        eprintln!("=== Expected ===\n{}", expected);
+        eprintln!("=== Expected ===\n{expected}");
 
         assert_eq!(actual.trim(), expected.trim());
         Ok(())
@@ -586,7 +606,7 @@ execution
         display_effect_size(&measurements, 0.05, &mut output)?;
 
         let actual = String::from_utf8(output)?;
-        eprintln!("=== Actual ===\n{}", actual);
+        eprintln!("=== Actual ===\n{actual}");
 
         let expected = r#"
 compilation :: cycles :: benchmarks/pulldown-cmark/benchmark.wasm
@@ -639,7 +659,7 @@ instantiation :: nanoseconds :: benchmarks/pulldown-cmark/benchmark.wasm
   [65929 71540.70 112190] new_backend.so
   [61849 69023.59 115015] old_backend.so
 "#;
-        eprintln!("=== Expected ===\n{}", expected);
+        eprintln!("=== Expected ===\n{expected}");
 
         assert_eq!(actual.trim(), expected.trim());
         Ok(())

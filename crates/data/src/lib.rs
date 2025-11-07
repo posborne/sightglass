@@ -52,6 +52,12 @@ pub struct Measurement<'a> {
     /// of microseconds if the event is wall time, or it might be a count of
     /// instructions if the event is instructions retired.
     pub count: u64,
+
+    /// The engine-specific flags used when recording this measurement.
+    /// This allows disambiguation when the same engine is used with different
+    /// configurations.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub engine_flags: Option<Cow<'a, str>>,
 }
 
 /// A phase in a Wasm program's lifecycle.
@@ -205,5 +211,82 @@ impl EffectSize<'_> {
             self.a_mean / self.b_mean,
             self.half_width_confidence_interval / self.b_mean,
         )
+    }
+}
+
+/// Extract benchmark name from wasm file path.
+///
+/// This function handles various path formats commonly used in Sightglass:
+/// - `./benchmarks/foo/benchmark.wasm` -> `foo`
+/// - `benchmarks/bar/benchmark.wasm` -> `bar`
+/// - `benchmarks/foo/bar.wasm` -> `foo/bar`
+/// - `simple.wasm` -> `simple`
+///
+/// # Examples
+///
+/// ```
+/// use sightglass_data::extract_benchmark_name;
+///
+/// assert_eq!(extract_benchmark_name("./benchmarks/foo/benchmark.wasm"), "foo");
+/// assert_eq!(extract_benchmark_name("benchmarks/bar/benchmark.wasm"), "bar");
+/// assert_eq!(extract_benchmark_name("benchmarks/foo/bar.wasm"), "foo/bar");
+/// assert_eq!(extract_benchmark_name("simple.wasm"), "simple");
+/// ```
+pub fn extract_benchmark_name(wasm_path: &str) -> String {
+    let mut path = wasm_path;
+
+    // Remove prefix variations
+    if let Some(stripped) = path.strip_prefix("./benchmarks/") {
+        path = stripped;
+    } else if let Some(stripped) = path.strip_prefix("benchmarks/") {
+        path = stripped;
+    }
+
+    // Remove suffix variations
+    if let Some(stripped) = path.strip_suffix("/benchmark.wasm") {
+        path = stripped;
+    } else if let Some(stripped) = path.strip_suffix(".wasm") {
+        path = stripped;
+    }
+
+    path.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_extract_benchmark_name() {
+        // Standard benchmark.wasm format with ./benchmarks/ prefix
+        assert_eq!(
+            extract_benchmark_name("./benchmarks/foo/benchmark.wasm"),
+            "foo"
+        );
+
+        // Standard benchmark.wasm format without ./ prefix
+        assert_eq!(
+            extract_benchmark_name("benchmarks/bar/benchmark.wasm"),
+            "bar"
+        );
+
+        // Direct .wasm file in benchmarks directory
+        assert_eq!(extract_benchmark_name("benchmarks/simple.wasm"), "simple");
+        assert_eq!(extract_benchmark_name("./benchmarks/simple.wasm"), "simple");
+
+        // Nested paths with .wasm extension
+        assert_eq!(extract_benchmark_name("benchmarks/foo/bar.wasm"), "foo/bar");
+        assert_eq!(
+            extract_benchmark_name("./benchmarks/nested/path/test.wasm"),
+            "nested/path/test"
+        );
+
+        // Simple .wasm files without benchmarks prefix
+        assert_eq!(extract_benchmark_name("simple.wasm"), "simple");
+        assert_eq!(extract_benchmark_name("test.wasm"), "test");
+
+        // Edge cases - no extensions or prefixes
+        assert_eq!(extract_benchmark_name("somefile"), "somefile");
+        assert_eq!(extract_benchmark_name("path/to/file"), "path/to/file");
     }
 }

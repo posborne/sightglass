@@ -8,7 +8,7 @@ pub fn file<P: AsRef<Path>>(path: P) -> String {
     let mut hasher = Sha256::new();
     let _ = io::copy(&mut file, &mut hasher).expect("to be able to hash the benchmark bytes");
     let hash = hasher.finalize();
-    hexify(hash.as_slice())
+    hexify(&hash)
 }
 
 /// Calculate the SHA256 hash of a string.
@@ -16,7 +16,7 @@ pub(crate) fn string(data: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(data);
     let hash = hasher.finalize();
-    hexify(hash.as_slice())
+    hexify(&hash)
 }
 
 /// Create a hexadecimal string from a sequence of bytes.
@@ -24,7 +24,7 @@ pub(crate) fn hexify(bytes: &[u8]) -> String {
     use std::fmt::Write;
     let mut s = String::new();
     for byte in bytes {
-        write!(&mut s, "{:x}", byte).expect("unable to write byte as hex");
+        write!(&mut s, "{byte:x}").expect("unable to write byte as hex");
     }
     s
 }

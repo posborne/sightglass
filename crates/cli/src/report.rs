@@ -95,7 +95,6 @@ fn get_available_phases(measurements: &[Measurement]) -> String {
     phases.join(", ")
 }
 
-
 fn create_display_engine_name(measurement: &Measurement) -> String {
     match &measurement.engine_flags {
         Some(flags) if !flags.is_empty() => {
@@ -250,7 +249,6 @@ impl ReportCommand {
     }
 
     fn compute_stats(&self, measurements: &[Measurement]) -> anyhow::Result<SightglassStats> {
-
         // Determine baseline engine from CLI args or first available
         let baseline_engine =
             determine_baseline_engine(measurements, self.baseline_engine.as_ref());

@@ -1,0 +1,21 @@
+compilation
+  benchmarks/go/tinygo-json.wasm
+    cycles
+      [40596271 48180216.51 57020252] ../wasmtime-v39.0.1.dylib
+  benchmarks/go/tinygo-regex.wasm
+    cycles
+      [31960838 38654559.50 68702486] ../wasmtime-v39.0.1.dylib
+instantiation
+  benchmarks/go/tinygo-json.wasm
+    cycles
+      [29477 35499.17 50995] ../wasmtime-v39.0.1.dylib
+  benchmarks/go/tinygo-regex.wasm
+    cycles
+      [31183 40434.14 96969] ../wasmtime-v39.0.1.dylib
+execution
+  benchmarks/go/tinygo-json.wasm
+    cycles
+      [52453342 55869743.98 61947933] ../wasmtime-v39.0.1.dylib
+  benchmarks/go/tinygo-regex.wasm
+    cycles
+      [2106856518 2237628377.31 2392509131] ../wasmtime-v39.0.1.dylib

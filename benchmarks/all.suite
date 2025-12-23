@@ -116,8 +116,10 @@ shootout/shootout-sieve.wasm
 shootout/shootout-switch.wasm
 shootout/shootout-xblabla20.wasm
 shootout/shootout-xchacha20.wasm
-tinygo/tinygo-json.wasm
-tinygo/tinygo-regex.wasm
+go/go-json.wasm
+go/go-regex.wasm
+go/tinygo-json.wasm
+go/tinygo-regex.wasm
 spidermonkey/benchmark.wasm
 tract-onnx-image-classification/benchmark.wasm
 richards/benchmark.wasm

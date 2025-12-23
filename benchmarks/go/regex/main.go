@@ -11,21 +11,31 @@ import (
 	"regexp"
 )
 
-// WASM imports for sightglass API
-//
-//go:wasm-module bench
-//export start
+//go:wasmimport bench start
 func benchStart()
 
-//go:wasm-module bench
-//export end
+//go:wasmimport bench end
 func benchEnd()
 
 func main() {
 	// Read the input text file
-	path := "tinygo-regex.input"
-	fmt.Fprintf(os.Stderr, "[regex] matching %s\n", path)
-	data, err := os.ReadFile(path)
+	// Workaround for Go WASI preopen bug: Try multiple path strategies (see benchmarks/go/WASI-ISSUE.md)
+	var data []byte
+	var err error
+
+	// Strategy 1: Relative path (works with TinyGo)
+	data, err = os.ReadFile("regex.input")
+	if err != nil {
+		// Strategy 2: Absolute path
+		data, err = os.ReadFile("/regex.input")
+		if err != nil {
+			// Strategy 3: Try to detect actual working directory
+			if wd, wdErr := os.Getwd(); wdErr == nil {
+				data, err = os.ReadFile(wd + "/regex.input")
+			}
+		}
+	}
+
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error reading input: %v\n", err)
 		os.Exit(1)

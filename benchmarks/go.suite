@@ -1,0 +1,13 @@
+# Go/TinyGo benchmarks - benchmarks compiled with both standard Go and TinyGo.
+#
+# TinyGo is a Go compiler designed for small places, producing compact
+# WebAssembly binaries suitable for resource-constrained environments.
+# Standard Go produces larger binaries but may have different performance characteristics.
+
+# TinyGo builds (smaller, optimized for size)
+go/tinygo-json.wasm
+go/tinygo-regex.wasm
+
+# Standard Go builds (larger, default compiler)
+go/go-json.wasm
+go/go-regex.wasm
